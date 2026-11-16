@@ -4,6 +4,8 @@
 
 - **All rooms** is gone from Rooms: it overlapped Whole House. For every speaker at once, play on a Music Assistant
   group such as Whole House.
+- **Whole House stands alone**: ticking it unticks the other rooms (it already holds its speakers), and ticking a
+  speaker unticks it. Playing on Whole House no longer says "Did not start" because another ticked room stayed idle.
 
 ## 0.13.4
 

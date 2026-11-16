@@ -353,6 +353,11 @@ class Players : public tessera::InPsram {
     return sent;
   }
 
+  uint16_t group_mask() const {
+    uint16_t mask = 0;
+    for (int i = 0; i < SLOTS; ++i) if (rooms_[i].used() && rooms_[i].group) mask |= 1u << i;
+    return mask;
+  }
   bool joinable(int slot) const { return rooms_[slot].used() && rooms_[slot].sync && !rooms_[slot].group; }
   uint16_t joinable_mask() const {
     uint16_t mask = 0;
@@ -1680,9 +1685,11 @@ class MusicCard : public tessera::Card {
         return;
       }
       if (add == Players::Add::SWITCH) {
-        // A Music Assistant group, or a room while nothing plays in one that cannot be grouped: this room instead.
-        tile.choose(tile.chosen() | (1u << slot));
-        if (!tile.room(slot).group || !tile.room(tile.lead_slot()).used()) tile.focus(slot);
+        // A Music Assistant group (Whole House) stands alone: it already holds its speakers, and the next item goes to
+        // it only. A room while nothing plays in one that cannot be grouped: this room instead.
+        if (tile.room(slot).group) tile.choose(1u << slot);
+        else tile.choose((tile.chosen() & ~tile.group_mask()) | (1u << slot));
+        tile.focus(slot);
         paint();
         return;
       }
@@ -1703,8 +1710,9 @@ class MusicCard : public tessera::Card {
         show(View::NOW);
         return;
       }
-      // Several: this one in or out, never the last one out.
-      const uint16_t picked = tile.chosen() ^ (1u << slot);
+      // Several: this one in or out, never the last one out; a speaker ticked takes a Music Assistant group out.
+      uint16_t picked = tile.chosen() ^ (1u << slot);
+      if (!tile.room(slot).group && (picked & (1u << slot))) picked &= ~tile.group_mask();
       if (picked) tile.choose(picked);
       paint();
       return;
