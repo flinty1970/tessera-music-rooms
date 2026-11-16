@@ -16,7 +16,7 @@ namespace ui = tessera::ui;
 constexpr uint32_t ICON_SPEAKER = 0xF04C3, ICON_ROOMS = 0xF0D38, ICON_PLAY = 0xF040A, ICON_PAUSE = 0xF03E4,
                    ICON_NEXT = 0xF04AD, ICON_PREVIOUS = 0xF04AE, ICON_MINUS = 0xF075E, ICON_PLUS = 0xF075D,
                    ICON_CHECK = 0xF012C, ICON_RIGHT = 0xF0142, ICON_LEFT = 0xF0141, ICON_HEART = 0xF02D1,
-                   ICON_MUSIC = 0xF0387;
+                   ICON_MUSIC = 0xF0387, ICON_BACKSPACE = 0xF004D;  // arrow-left: the icon font has no backspace
 
 // A text into a fixed field, cut on a character boundary.
 static void put(char *field, size_t size, const char *text) {
@@ -450,10 +450,11 @@ class MusicCard : public tessera::Card {
     }
 #if LV_USE_ROLLER
     // The library's items on a wheel, as the alarm clock's time: the chosen one in the middle, its neighbours above
-    // and below; a swipe turns it, the Play key under it plays the one in the middle. Its items live in PSRAM.
+    // and below; a swipe turns it. One row over it holds where it plays, the search key and the Play key, which plays
+    // the one in the middle, so the wheel has the rest of the card. Its items live in PSRAM.
     shelf_ = new Shelf();
-    const int wheel_y = key_ + gap_, play_h = key_;
-    const int wheel_h = height_ - wheel_y - gap_ - play_h - gap_;
+    const int wheel_y = key_ + gap_;
+    const int wheel_h = height_ - wheel_y;
     if (shelf_ && wheel_h >= ui::mm(15)) {
       Font face = Font::BODY_LARGE;
       for (Font f : {Font::TITLE})
@@ -472,11 +473,25 @@ class MusicCard : public tessera::Card {
       lv_obj_set_pos(wheel_, 0, wheel_y);
       lv_obj_add_event_cb(wheel_, &MusicCard::wheel_turned, LV_EVENT_VALUE_CHANGED, this);
       style_wheel();
-      play_ = button(0, height_ - play_h, width_, play_h, theme::ACCENT);
+      const int lh = ui::line_height(Font::BODY_LARGE), icon_w = ui::line_height(Font::ICON_SMALL) + ui::px(4);
+      const int play_tw = ui::text_width(plugin_->text("play"), Font::BODY_LARGE) + 2;
+      play_w_ = icon_w + gap_ + play_tw + 3 * gap_;
+      play_ = button(width_ - play_w_, 0, play_w_, key_, theme::ACCENT);
       play_icon_ = glyph(play_, ICON_PLAY, theme::ON_ACCENT);
+      lv_obj_set_pos(play_icon_, (play_w_ - icon_w - gap_ - play_tw) / 2, (key_ - ui::line_height(Font::ICON_SMALL)) / 2);
       play_text_ = ui::label(play_, Font::BODY_LARGE, theme::ON_ACCENT);
+      lv_obj_set_size(play_text_, play_tw, lh);
+      lv_obj_set_pos(play_text_, (play_w_ - icon_w - gap_ - play_tw) / 2 + icon_w + gap_, (key_ - lh) / 2);
+      ui::set_text(play_text_, plugin_->text("play"));
+      find_w_ = ui::text_width(plugin_->text("search"), Font::BODY_LARGE) + 2 + 3 * gap_;
+      find_ = button(width_ - play_w_ - gap_ - find_w_, 0, find_w_, key_, theme::RAISED);
+      find_icon_ = ui::label(find_, Font::BODY_LARGE, theme::INK);
+      ui::set_text(find_icon_, plugin_->text("search"));
+      lv_obj_align(find_icon_, LV_ALIGN_CENTER, 0, 0);
+      make_keyboard();
       hide(wheel_, true);
       hide(play_, true);
+      hide(find_, true);
     }
 #endif
 
@@ -505,6 +520,15 @@ class MusicCard : public tessera::Card {
       ui::set_color(kind_key_[i].text, theme::INK);
     }
     style_wheel();
+    restyle(find_, theme::RAISED);
+    restyle(field_, theme::RAISED);
+    restyle(go_, theme::ACCENT);
+    ui::set_color(find_icon_, theme::INK);
+    ui::set_color(go_text_, theme::ON_ACCENT);
+    for (TypeKey &k : type_) {
+      restyle(k.box, theme::RAISED);
+      ui::set_color(k.text, theme::INK);
+    }
     for (lv_obj_t *l : {head_icon_, head_text_, library_text_, title_, volume_}) if (l) ui::set_color(l, theme::INK);
     for (lv_obj_t *l : {head_more_, artist_, page_, note_}) if (l) ui::set_color(l, theme::MUTED);
     for (int i = 0; i < 6; ++i) if (key_icon_[i]) ui::set_color(key_icon_[i], i == 1 ? theme::ON_ACCENT : theme::INK);
@@ -521,7 +545,12 @@ class MusicCard : public tessera::Card {
   // Back goes up a step of the card's own; on Now playing it closes the card.
   bool on_back() override {
     switch (view_) {
-      case View::ITEMS: show(View::KINDS); return true;
+      case View::ITEMS:
+        // A search's results go back to the whole list, the list to the kinds.
+        if (query_[0]) { query_[0] = '\0'; show(View::ITEMS); return true; }
+        show(View::KINDS);
+        return true;
+      case View::SEARCH: view_ = View::ITEMS; paint(); return true;
       case View::KINDS:
         if (favourites_) { favourites_ = false; kind_page_ = 0; show(View::KINDS); return true; }
         show(View::NOW);
@@ -552,6 +581,11 @@ class MusicCard : public tessera::Card {
         if (inside(kind_key_[i].box, p)) { pick_kind(kind_entry_[i]); return; }
     if (view_ == View::ITEMS && wheel_) {
       if (inside(play_, p)) play_chosen(*tile);
+      else if (inside(find_, p)) { view_ = View::SEARCH; paint(); }
+      return;
+    }
+    if (view_ == View::SEARCH) {
+      type_at(p);
       return;
     }
     if (inside(prev_, p) && !lv_obj_has_flag(prev_, LV_OBJ_FLAG_HIDDEN)) { turn(-1); return; }
@@ -595,7 +629,10 @@ class MusicCard : public tessera::Card {
   }
 
  private:
-  enum class View : uint8_t { NONE, NOW, ROOMS, KINDS, ITEMS };
+  enum class View : uint8_t { NONE, NOW, ROOMS, KINDS, ITEMS, SEARCH };
+  // The keyboard of a search: digits, three rows of letters, and a row of space and delete.
+  static constexpr int KEYS = 10 + 26 + 2;
+  struct TypeKey { lv_obj_t *box = nullptr, *text = nullptr; char ch = 0; };
   static constexpr int ROWS = 6;
   struct Row { lv_obj_t *box = nullptr, *icon = nullptr, *text = nullptr, *side = nullptr, *mark = nullptr; int y = 0; };
   struct Item { char name[49] = "", uri[49] = "", type[16] = "", side[49] = ""; bool playable = false; };
@@ -693,7 +730,8 @@ class MusicCard : public tessera::Card {
   void paint_head(Players &tile, bool now) {
     const int pad = gap_ + ui::px(4);
     hide(library_, !now);
-    const int head_w = now ? width_ - lv_obj_get_width(library_) - gap_ : width_;
+    const bool row = view_ == View::ITEMS && wheel_;
+    const int head_w = now ? width_ - lv_obj_get_width(library_) - gap_ : row ? width_ - play_w_ - find_w_ - 2 * gap_ : width_;
     lv_obj_set_width(head_, head_w);
     set_icon(head_icon_, tile.room_count() > 1 ? ICON_ROOMS : ICON_SPEAKER);
     lv_obj_set_pos(head_icon_, pad, (key_ - ui::line_height(Font::ICON_SMALL)) / 2);
@@ -704,6 +742,13 @@ class MusicCard : public tessera::Card {
     lv_obj_set_size(head_text_, std::max(1, head_w - text_x - more_w - pad - gap_), ui::line_height(Font::BODY_LARGE));
     lv_obj_set_pos(head_text_, text_x, (key_ - ui::line_height(Font::BODY_LARGE)) / 2);
     const std::string rooms = tile.rooms_text();
+    if (row && query_[0]) {
+      // While a search shows its results, the head says what was searched in which kind.
+      set_icon(head_icon_, KINDS[kind_].icon);
+      const std::string searched = tessera::fill(plugin_->text("searched"), "q", query_);
+      ui::set_text(head_text_, tessera::fill(searched.c_str(), "kind", plugin_->text(KINDS[kind_].word)));
+      return;
+    }
     ui::set_text(head_text_, now ? rooms : tessera::fill(plugin_->text("plays_in"), "rooms", rooms));
   }
 
@@ -723,12 +768,25 @@ class MusicCard : public tessera::Card {
     if (view_ != View::ITEMS || !tile) {
       hide(wheel_, true);
       hide(play_, true);
+      hide(find_, true);
+    }
+    if (view_ != View::SEARCH || !tile) {
+      hide(field_, true);
+      hide(go_, true);
+      for (TypeKey &k : type_) hide(k.box, true);
     }
     if (!tile) {
       hide(head_, true);
       hide(library_, true);
       hide(note_, false);
       ui::set_text(note_, plugin_->text("choose_player"));
+      return;
+    }
+    if (view_ == View::SEARCH) {
+      hide(head_, true);
+      hide(library_, true);
+      for (int i = 0; i < rows_; ++i) hide(row_[i].box, true);
+      paint_search();
       return;
     }
     hide(head_, false);
@@ -845,6 +903,7 @@ class MusicCard : public tessera::Card {
   }
 
   void pick_kind(int kind) {
+    query_[0] = '\0';
     if (kind < 0) { favourites_ = true; paint(); return; }
     kind_ = kind;
     offset_ = 0;
@@ -857,6 +916,7 @@ class MusicCard : public tessera::Card {
       const bool any = total_ > 0;
       hide(wheel_, !any);
       hide(play_, !any);
+      hide(find_, false);
       hide(note_, any);
       if (!any) ui::set_text(note_, plugin_->text(loading_ ? "loading" : failed_ ? "failed" : "empty"));
       if (any) paint_play();
@@ -985,7 +1045,7 @@ class MusicCard : public tessera::Card {
     lv_roller_set_selected(wheel_, chosen, LV_ANIM_OFF);
 #endif
   }
-  int wheel_h_() const { return height_ - (key_ + gap_) - gap_ - key_ - gap_; }
+  int wheel_h_() const { return height_ - (key_ + gap_); }
 
   int chosen() const {
 #if LV_USE_ROLLER
@@ -994,23 +1054,109 @@ class MusicCard : public tessera::Card {
     return -1;
   }
 
-  // The Play key: what the middle of the wheel plays, and who, in its words; grey for one that cannot play.
+  // The Play key: grey for an item that cannot play.
   void paint_play() {
     const int i = chosen();
     if (i < 0) return;
-    const Item &it = shelf_->items[i];
-    const std::string words = it.side[0] ? tessera::fill(plugin_->text("play_by"), "artist", it.side)
-                                         : std::string(plugin_->text("play"));
-    ui::set_text(play_text_, words);
-    const int icon_w = lv_obj_get_width(play_icon_), lh = ui::line_height(Font::BODY_LARGE);
-    const int tw = std::min(width_ - icon_w - 3 * gap_, ui::text_width(words, Font::BODY_LARGE) + 2);
-    const int x0 = std::max(gap_, (width_ - icon_w - gap_ - tw) / 2);
-    lv_obj_set_pos(play_icon_, x0, (key_ - ui::line_height(Font::ICON_SMALL)) / 2);
-    lv_obj_set_size(play_text_, std::max(1, tw), lh);
-    lv_obj_set_pos(play_text_, x0 + icon_w + gap_, (key_ - lh) / 2);
-    restyle(play_, it.playable ? theme::ACCENT : theme::RAISED);
-    ui::set_color(play_icon_, it.playable ? theme::ON_ACCENT : theme::SUBTLE);
-    ui::set_color(play_text_, it.playable ? theme::ON_ACCENT : theme::SUBTLE);
+    const bool can = shelf_->items[i].playable;
+    restyle(play_, can ? theme::ACCENT : theme::RAISED);
+    ui::set_color(play_icon_, can ? theme::ON_ACCENT : theme::SUBTLE);
+    ui::set_color(play_text_, can ? theme::ON_ACCENT : theme::SUBTLE);
+  }
+
+  // The keyboard of a search, made once with the wheel: a field with what is typed and the search key over the keys.
+  void make_keyboard() {
+    field_ = button(0, 0, 1, 1, theme::RAISED);
+    field_text_ = ui::label(field_, Font::BODY_LARGE, theme::INK);
+    go_ = button(0, 0, 1, 1, theme::ACCENT);
+    go_text_ = ui::label(go_, Font::BODY_LARGE, theme::ON_ACCENT);
+    ui::set_text(go_text_, plugin_->text("search"));
+    static const char *const LINES[4] = {"1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"};
+    int n = 0;
+    for (const char *line : LINES)
+      for (const char *ch = line; *ch; ++ch) type_[n++].ch = *ch;
+    type_[n++].ch = '\b';
+    type_[n++].ch = ' ';
+    for (TypeKey &k : type_) {
+      k.box = button(0, 0, 1, 1, theme::RAISED);
+      k.text = ui::label(k.box, k.ch == '\b' ? Font::ICON_SMALL : Font::BODY_LARGE, theme::INK);
+      lv_obj_set_style_text_align(k.text, LV_TEXT_ALIGN_CENTER, 0);
+      const char word[2] = {k.ch, '\0'};
+      ui::set_text(k.text, k.ch == '\b'  ? ui::icon(ICON_BACKSPACE)
+                           : k.ch == ' ' ? std::string(plugin_->text("space"))
+                                         : std::string(word));
+      hide(k.box, true);
+    }
+    hide(field_, true);
+    hide(go_, true);
+  }
+
+  // The search: what is typed and the search key in the top row, the keys in five rows under it, as large as the
+  // card allows. The keys are laid out here, as the kinds' are.
+  void paint_search() {
+    const int lh = ui::line_height(Font::BODY_LARGE);
+    const int go_tw = ui::text_width(plugin_->text("search"), Font::BODY_LARGE) + 2;
+    const int go_w = go_tw + 4 * gap_;
+    hide(field_, false);
+    hide(go_, false);
+    lv_obj_set_pos(go_, width_ - go_w, 0);
+    lv_obj_set_size(go_, go_w, key_);
+    lv_obj_set_size(go_text_, go_tw, lh);
+    lv_obj_set_pos(go_text_, (go_w - go_tw) / 2, (key_ - lh) / 2);
+    lv_obj_set_pos(field_, 0, 0);
+    lv_obj_set_size(field_, width_ - go_w - gap_, key_);
+    const int fh = ui::line_height(Font::BODY_LARGE);
+    lv_obj_set_size(field_text_, std::max(1, width_ - go_w - 3 * gap_ - ui::px(8)), fh);
+    lv_obj_set_pos(field_text_, gap_ + ui::px(4), (key_ - fh) / 2);
+    // What is typed, with a bar where the next letter comes; the kind it searches while nothing is typed.
+    ui::set_text(field_text_, query_[0] ? std::string(query_) + "|"
+                                        : tessera::fill(plugin_->text("search_in"), "kind", plugin_->text(KINDS[kind_].word)));
+    ui::set_color(field_text_, query_[0] ? theme::INK : theme::MUTED);
+    const int top = key_ + gap_, g = ui::px(6);
+    const int kh = (height_ - top - 4 * g) / 5, kw = (width_ - 9 * g) / 10;
+    int at = 0;
+    for (int r = 0; r < 4; ++r) {
+      const int count = r < 2 ? 10 : r == 2 ? 9 : 7;
+      // Each row in the middle; the last row of letters keeps room for delete at its right.
+      const int extra = r == 3 ? kw * 3 / 2 + g : 0;
+      const int x0 = (width_ - count * kw - (count - 1) * g - extra) / 2;
+      for (int i = 0; i < count; ++i) place(type_[at++], x0 + i * (kw + g), top + r * (kh + g), kw, kh);
+      if (r == 3) place(type_[at++], x0 + count * (kw + g), top + r * (kh + g), kw * 3 / 2, kh);
+    }
+    // Space across the middle of the last row.
+    place(type_[at], (width_ - kw * 5 - 4 * g) / 2, top + 4 * (kh + g), kw * 5 + 4 * g, kh);
+  }
+
+  void place(TypeKey &k, int x, int y, int w, int h) {
+    hide(k.box, false);
+    lv_obj_set_pos(k.box, x, y);
+    lv_obj_set_size(k.box, std::max(1, w), std::max(1, h));
+    const int lh = ui::line_height(k.ch == '\b' ? Font::ICON_SMALL : Font::BODY_LARGE);
+    lv_obj_set_size(k.text, std::max(1, w), lh);
+    lv_obj_set_pos(k.text, 0, (h - lh) / 2);
+  }
+
+  // A tap on the keyboard: a letter, a digit or a space at the end, delete the last, or search.
+  void type_at(const tessera::Point &p) {
+    if (inside(go_, p)) {
+      show(View::ITEMS);
+      return;
+    }
+    for (const TypeKey &k : type_) {
+      if (!inside(k.box, p)) continue;
+      const size_t n = strlen(query_);
+      if (k.ch == '\b') {
+        if (n) query_[n - 1] = '\0';
+      } else if (n + 1 < sizeof(query_) && !(k.ch == ' ' && (n == 0 || query_[n - 1] == ' '))) {
+        // Letters as a name reads: a capital first and after a space, small ones after.
+        char ch = k.ch;
+        if (ch >= 'A' && ch <= 'Z' && n && query_[n - 1] != ' ') ch = static_cast<char>(ch - 'A' + 'a');
+        query_[n] = ch;
+        query_[n + 1] = '\0';
+      }
+      paint();
+      return;
+    }
   }
 
   void play_chosen(Players &tile) {
@@ -1055,6 +1201,10 @@ class MusicCard : public tessera::Card {
     data["limit"] = wheel_ ? KINDS[kind_].page : page_size();
     data["offset"] = wheel_ ? total_ : offset_;
     data["order_by"] = "sort_name";
+    // What was typed, without a space at its end: Music Assistant finds it in the names of the kind's items.
+    std::string q = query_;
+    while (!q.empty() && q.back() == ' ') q.pop_back();
+    if (wheel_ && !q.empty()) data["search"] = q;
     asked_ = tessera::send(plugin_, request.as<JsonObjectConst>());
     loading_ = asked_ != 0;
     failed_ = asked_ == 0;
@@ -1078,8 +1228,11 @@ class MusicCard : public tessera::Card {
   KindKey kind_key_[KIND_KEYS];
   int kind_entry_[KIND_KEYS] = {};
   Shelf *shelf_ = nullptr;
-  lv_obj_t *wheel_{}, *play_{}, *play_icon_{}, *play_text_{};
-  int total_ = 0;
+  lv_obj_t *wheel_{}, *play_{}, *play_icon_{}, *play_text_{}, *find_{}, *find_icon_{};
+  lv_obj_t *field_{}, *field_text_{}, *go_{}, *go_text_{};
+  TypeKey type_[KEYS];
+  char query_[33] = "";
+  int total_ = 0, play_w_ = 0, find_w_ = 0;
 };
 
 // ---- The plugin ----

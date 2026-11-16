@@ -29,7 +29,10 @@
     "page": "Page {n}",
     "volume": "{n} %",
     "play": "Play",
-    "play_by": "Play · {artist}"
+    "search": "Search",
+    "search_in": "Search {kind}",
+    "searched": "“{q}” in {kind}",
+    "space": "Space"
   },
   "app": {
     "name": "Music rooms",

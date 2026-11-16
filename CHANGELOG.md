@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0
+
+- **Search**: a key beside Play opens a keyboard; type part of a name and the wheel shows only those artists, songs,
+  albums or playlists of your Music Assistant library.
+- The wheel has more room: where it plays, Search and Play now share one row at the top.
+- The wheel also on small screens such as the CYD.
+
 ## 0.4.0
 
 - The library's items turn on a wheel, as the alarm clock's time does: swipe through them, and the large Play key
