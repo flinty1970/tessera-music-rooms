@@ -897,7 +897,9 @@ class MusicCard : public tessera::Card {
     hide(everywhere_key_, !now);
     const bool row = view_ == View::ITEMS && wheel_;
     const bool taking = view_ == View::PLAYING && rooms_wheel_;
-    const int head_w = std::max(1, now ? width_ - lv_obj_get_width(library_) - lv_obj_get_width(everywhere_key_) - 2 * gap_
+    // lv_obj_get_width is an int32_t: a long on the ESP32, an int on the bench's computer.
+    const int head_w = std::max<int>(1, now ? width_ - static_cast<int>(lv_obj_get_width(library_)) -
+                                                  static_cast<int>(lv_obj_get_width(everywhere_key_)) - 2 * gap_
                                        : row ? width_ - play_w_ - find_w_ - open_w_ - 3 * gap_
                                        : taking ? width_ - take_w_ - gap_ : width_);
     lv_obj_set_width(head_, head_w);
