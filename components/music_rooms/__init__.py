@@ -16,11 +16,15 @@ CONF_LIBRARY = "library"
 # A Home Assistant script that plays an item whose address the app cut (a Spotify playlist's) exactly: it searches by
 # name and plays the result whose address starts as the cut one (scripts/music_rooms_play.yaml). Empty: by name.
 CONF_PLAY_SCRIPT = "play_script"
+# A Home Assistant script that joins rooms to the lead of a player's group (scripts/music_rooms_join.yaml): Music
+# Assistant ignores a join to a member of another player's group. Empty: join to the player itself.
+CONF_JOIN_SCRIPT = "join_script"
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(MusicRooms),
         cv.Optional(CONF_LIBRARY, default=""): cv.string,
         cv.Optional(CONF_PLAY_SCRIPT, default=""): cv.string,
+        cv.Optional(CONF_JOIN_SCRIPT, default=""): cv.string,
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -30,4 +34,5 @@ async def to_code(config):
     await cg.register_component(var, config)
     cg.add(var.set_library(config[CONF_LIBRARY]))
     cg.add(var.set_play_script(config[CONF_PLAY_SCRIPT]))
+    cg.add(var.set_join_script(config[CONF_JOIN_SCRIPT]))
     await smart_display.register_plugin(var, __file__)

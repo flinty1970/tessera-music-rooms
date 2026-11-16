@@ -328,10 +328,16 @@ class Players : public tessera::InPsram {
     return mask;
   }
   // media_player.join: these rooms play what the first plays, in step with it.
+  // With the screen's join script, Home Assistant joins them to the lead of the group the first room is in: Music
+  // Assistant ignores a join to a room that is a member of another room's group, which the screen cannot tell.
   bool join(int lead, uint16_t rooms) {
     JsonDocument data;
-    JsonArray members = data["group_members"].to<JsonArray>();
+    const char *script = plugin_->join_script();
+    JsonObject into = script[0] ? data["variables"].to<JsonObject>() : data.to<JsonObject>();
+    if (script[0]) into["player"] = rooms_[lead].id;
+    JsonArray members = into[script[0] ? "members" : "group_members"].to<JsonArray>();
     for (int i = 0; i < SLOTS; ++i) if (rooms & (1u << i)) members.add(rooms_[i].id);
+    if (script[0]) return tessera::action("script.turn_on", script, data.as<JsonVariantConst>());
     return tessera::action("media_player.join", rooms_[lead].id, data.as<JsonVariantConst>());
   }
 

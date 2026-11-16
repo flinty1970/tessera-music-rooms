@@ -1,0 +1,35 @@
+# Music rooms: join rooms to the group a player is in. Music Assistant ignores a join to a player that is a member of
+# another player's group, and the screen cannot tell which one leads (a tile's data has no room for every group), so
+# the screen asks this script: it joins the rooms to the lead of the player's group (the first of its group_members),
+# or to the player itself when it plays alone.
+#
+# Add it in Home Assistant as a script with the id music_rooms_join (Settings, Automations & scenes, Scripts, Add
+# script, Edit in YAML, paste this), then give each screen `join_script: script.music_rooms_join` under `music_rooms:`.
+alias: Music rooms – join rooms
+description: Joins rooms to the lead of the group a player is in.
+mode: queued
+max: 20
+fields:
+  player:
+    description: A player of the group to join (its lead or a member).
+    selector:
+      entity:
+        domain: media_player
+  members:
+    description: The rooms to join to it.
+    selector:
+      entity:
+        domain: media_player
+        multiple: true
+sequence:
+  - variables:
+      group: "{{ state_attr(player, 'group_members') or [] }}"
+      lead: "{{ group[0] if group | length > 1 else player }}"
+      rooms: "{{ (members if members is list else [members]) | reject('eq', lead) | list }}"
+  - condition: template
+    value_template: "{{ rooms | length > 0 }}"
+  - action: media_player.join
+    target:
+      entity_id: "{{ lead }}"
+    data:
+      group_members: "{{ rooms }}"

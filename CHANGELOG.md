@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.2
+
+- Rooms join a group through its lead, also when the room the screen controls is a member of another room's group
+  (Music Assistant ignored those joins). Needs the join script (`scripts/music_rooms_join.yaml`) and
+  `join_script: script.music_rooms_join` under `music_rooms:`.
+
 ## 0.12.1
 
 - A room unticked while music plays now always leaves the group, also when it was joined from another screen, the

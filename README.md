@@ -28,6 +28,10 @@ FNK0104S are too small for its wheel, keyboard and keys, and the Tessera app doe
 7. Optional, so Spotify playlists and artists play exactly: add the script in `scripts/music_rooms_play.yaml` to Home
    Assistant with the id `music_rooms_play`, and give the screen `play_script: script.music_rooms_play` under
    `music_rooms:` in its ESPHome configuration. Without it such an item plays by its name.
+8. Recommended, so a room joins a group whatever room of it the tile controls: add the script in
+   `scripts/music_rooms_join.yaml` with the id `music_rooms_join`, and give the screen
+   `join_script: script.music_rooms_join` under `music_rooms:`. Without it a room ticked while the controlled room is a
+   member of another room's group is not joined (Music Assistant ignores a join to a member).
 
 ## On the screen
 
