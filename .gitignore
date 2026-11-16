@@ -1,2 +1,9 @@
+# The bench's pictures and builds (tools/preview.py), made again on every run
 .preview/
+.esphome/
+# Python and editor leftovers
 __pycache__/
+*.pyc
+.DS_Store
+.vscode/
+.idea/
