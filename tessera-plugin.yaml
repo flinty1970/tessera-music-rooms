@@ -13,7 +13,12 @@ stage: beta
 topics: [media]
 requires:
   esphome: 2026.6.2
-boards: any
+# Screens of 4 inches and more (a square of 480 x 480 and up): the wheel, the keyboard and the keys need the room. Not
+# the CYD (2.8"), the 3.5" boards, the narrow 4" Hosyond or the Freenove FNK0104S.
+boards: [guition, waveshare43, waveshare43c, jc4880p443, waveshare4b, waveshare4v4, wavesharep4, sensecapd1,
+         waveshare5, tab5, jc8048w550ci, waveshare7, waveshare7b, sunton8048s070, jc1060p470, jc1060p470v2,
+         wavesharep47, wavesharep47b, reterminald1001, jc8012p4a1, jc8012p4a1v2, jc8012p4a1v3, crowpanel101,
+         waveshare101]
 flash_kb: 24
 
 permissions:

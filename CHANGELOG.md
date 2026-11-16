@@ -2,6 +2,8 @@
 
 ## 0.8.0
 
+- For screens of 4 inches or more only (see Screens in the README): the CYD and the 3.5" boards are too small.
+
 - **Open** an artist to see their albums, and an album to see its songs, beside Play and Search; Play plays the one
   in the middle (the whole artist, the whole album, or one song). Back goes up a step.
 - **Ten rooms** beside the tile's own player. Rooms at once gave its place to the tenth (a tile has at most twelve

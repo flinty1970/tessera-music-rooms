@@ -3,6 +3,13 @@
 A tile for a Music Assistant player that lets you choose the room or rooms to play in, browse the Music Assistant
 library and play what you tap there, with Now playing, play and pause, skip and volume on the same tile.
 
+## Screens
+
+Music rooms needs a screen of **4 inches or more**: the Guition 4" square (ESP32-S3-4848S040) and the Waveshare 4"
+squares, every 4.3" board (Waveshare 4.3 and 4.3C, Guition JC4880P443), and every 5", 7", 8" and 10.1" board. The CYD
+(2.8"), the 3.5" boards (Waveshare 3.5, Guition JC3248W535, WT32-SC01 Plus), the narrow Hosyond 4" and the Freenove
+FNK0104S are too small for its wheel, keyboard and keys, and the Tessera app does not offer it for them.
+
 ## Set up
 
 1. Add the plugin to a screen in Tessera. The screen builds once.
