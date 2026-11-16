@@ -65,8 +65,11 @@ class TesseraMusicLibrary extends HTMLElement {
     const back = this._back;
     if (!back) return;
     if (picture) {
-      back.style.cssText = this._was + `;background:center / cover no-repeat url("${picture}") !important;` +
-        'filter:blur(40px) saturate(1.25) brightness(.85);transform:scale(1.15);transition:background .8s';
+      // The cover only tints the page: the theme's own background over it, four fifths strong, keeps every word as
+      // readable as on any other page.
+      const wash = 'color-mix(in srgb, var(--primary-background-color, #fafafa) 80%, transparent)';
+      back.style.cssText = this._was + `;background:linear-gradient(${wash}, ${wash}), center / cover no-repeat url("${picture}") !important;` +
+        'filter:blur(36px) saturate(1.4);transform:scale(1.15);transition:background .8s';
     } else {
       back.style.cssText = this._was;
     }
