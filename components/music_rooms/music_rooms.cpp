@@ -1,6 +1,7 @@
 #include "music_rooms.h"
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
@@ -71,6 +72,12 @@ class Players : public tessera::InPsram {
     }
     several_ = !strcmp(options["rooms_at_once"] | "one", "several");
     put(library_, options["library"] | "");
+    // The default player: "own" or "room_<n>"; a room left empty falls back to the tile's own player.
+    const char *start = options["default_player"] | "own";
+    default_slot_ = 0;
+    if (!strncmp(start, "room_", 5)) default_slot_ = std::max(0, std::min(SLOTS - 1, atoi(start + 5)));
+    put(open_on_, options["open_on"] | "kinds");
+    put(idle_play_, options["idle_play"] | "");
   }
 
   // The tile's data, as on_state has it: its own player, and the rooms under `entities`.
@@ -88,10 +95,13 @@ class Players : public tessera::InPsram {
   const Room &room(int slot) const { return rooms_[slot]; }
   bool several() const { return several_; }
   const char *library() const { return library_; }
-  // The slots of the rooms it plays in next, one bit each in the tile's order; its own player when none is picked.
+  const char *open_on() const { return open_on_; }
+  // The slots of the rooms it plays in next, one bit each in the tile's order; the default player while none is
+  // picked (its own when the default's slot is empty).
   uint16_t chosen() const {
     const uint16_t picked = plugin_->chosen(index_) & used_mask();
-    return picked ? picked : 1;
+    if (picked) return picked;
+    return rooms_[default_slot_].used() ? 1u << default_slot_ : 1;
   }
   int lead_slot() const {
     const uint16_t picked = chosen();
@@ -160,9 +170,17 @@ class Players : public tessera::InPsram {
     }
     plugin_->set_joined(index_, others);
     JsonDocument item;
-    item["media_content_id"] = uri;
-    item["media_content_type"] = type;
-    sent = tessera::action("media_player.play_media", rooms_[lead].id, item.as<JsonVariantConst>()) && sent;
+    if (strstr(uri, "://")) {
+      // An address of the library: Home Assistant's play_media with the item's own address and kind.
+      item["media_content_id"] = uri;
+      item["media_content_type"] = type;
+      sent = tessera::action("media_player.play_media", rooms_[lead].id, item.as<JsonVariantConst>()) && sent;
+    } else {
+      // A name (the item to play when idle): Music Assistant finds it, as its own play_media action does.
+      item["media_id"] = uri;
+      if (type[0]) item["media_type"] = type;
+      sent = tessera::action("music_assistant.play_media", rooms_[lead].id, item.as<JsonVariantConst>()) && sent;
+    }
     note_ = sent ? Note::STARTING : Note::NOT_SENT;
     started_at_ = tessera::epoch();
     put(started_title_, rooms_[lead].title);
@@ -174,6 +192,12 @@ class Players : public tessera::InPsram {
   void play_pause() {
     const Room &lead = rooms_[lead_slot()];
     if (!lead.used() || gone(lead.state)) return;
+    // Nothing to play there (idle, off, on): the item to play when idle, when one is set.
+    const bool queued = !strcmp(lead.state, "playing") || !strcmp(lead.state, "paused") || !strcmp(lead.state, "buffering");
+    if (!queued && idle_play_[0]) {
+      play_idle();
+      return;
+    }
     tessera::wish(lead.id, tessera::Wish::PLAYING, !strcmp(lead.state, "playing") ? "0" : "1");
   }
   void step_track(bool next) {
@@ -190,6 +214,20 @@ class Players : public tessera::InPsram {
     JsonDocument level;
     level["volume_level"] = lead.volume / 100.0f;
     tessera::action("media_player.volume_set", lead.id, level.as<JsonVariantConst>());
+  }
+
+  // The item to play when idle: an address of the library ("library://playlist/3"), whose kind it names, or a name,
+  // which Music Assistant looks up as a playlist, or as what open_on names when that is a kind.
+  void play_idle() {
+    char type[16] = "playlist";
+    const char *at = strstr(idle_play_, "://");
+    if (at) {
+      const char *kind = at + 3, *end = strchr(kind, '/');
+      if (end && end - kind < static_cast<int>(sizeof(type))) { memcpy(type, kind, end - kind); type[end - kind] = '\0'; }
+    } else if (strcmp(open_on_, "kinds") && strcmp(open_on_, "favourites")) {
+      put(type, open_on_);
+    }
+    play(idle_play_, type);
   }
 
   // A start that took: the first room plays something else than before, or plays where it did not. One that did not
@@ -222,6 +260,9 @@ class Players : public tessera::InPsram {
   int index_;
   Room rooms_[SLOTS];
   char library_[49] = "";
+  char open_on_[16] = "kinds";
+  char idle_play_[65] = "";
+  int default_slot_ = 0;
   char started_title_[49] = "", started_state_[16] = "";
   bool several_ = false;
   uint32_t started_at_ = 0;
@@ -474,7 +515,7 @@ class MusicCard : public tessera::Card {
     const tessera::Point p = tessera::tap_point();
     if (p.x < 0) return;
     if (view_ == View::NOW) {
-      if (inside(library_, p)) { favourites_ = false; kind_page_ = 0; show(View::KINDS); return; }
+      if (inside(library_, p)) { open_library(*tile); return; }
       if (inside(head_, p)) { show(View::ROOMS); return; }
       if (inside(keys_[0], p)) tile->step_track(false);
       else if (inside(keys_[1], p)) tile->play_pause();
@@ -577,6 +618,20 @@ class MusicCard : public tessera::Card {
     ui::set_color(r.mark, more ? theme::MUTED : theme::ACCENT);
     hide(r.mark, !ticked && !more);
     lv_obj_set_pos(r.mark, width_ - pad - mark_w, (key_ - ui::line_height(Font::ICON_SMALL)) / 2);
+  }
+
+  // The Library key: where the tile's Open library on says, else the list of kinds.
+  void open_library(Players &tile) {
+    favourites_ = !strcmp(tile.open_on(), "favourites");
+    kind_page_ = 0;
+    for (int k = 0; k < KIND_COUNT; ++k) {
+      if (strcmp(tile.open_on(), KINDS[k].type)) continue;
+      kind_ = k;
+      offset_ = 0;
+      show(View::ITEMS);
+      return;
+    }
+    show(View::KINDS);
   }
 
   // How many items a page of the library asks for: as many as the card has rows, and no more than fit an answer whole.

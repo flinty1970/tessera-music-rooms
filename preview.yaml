@@ -10,6 +10,9 @@ tiles:
       room_2: media_player.office
       rooms_at_once: several
       library: 01JABCDEFGHJKMNPQRSTVWXYZ0
+      default_player: own
+      open_on: favourites
+      idle_play: Morning mix
   - tile: player
     name: Bedroom
     entity: media_player.bedroom

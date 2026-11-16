@@ -3,7 +3,7 @@
 # its keys. Every name, label and hint below is a key into translations/<language>.json, part "app". docs/MANIFEST.md
 # in the plugins repository has every field.
 id: music_rooms
-version: 0.1.0
+version: 0.2.0
 # 0.15: options of kind entity (the rooms); 0.17: the cover of the tile's own player by name (cover:).
 api: "0.17"
 icon: speaker-multiple
@@ -28,6 +28,8 @@ permissions:
     - media_player.media_next_track
     - media_player.media_previous_track
     - media_player.volume_set
+    # The item to play when idle, found by its name or address in Music Assistant.
+    - music_assistant.play_media
 
 tiles:
   - id: player
@@ -52,11 +54,22 @@ tiles:
       - { id: room_4, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level], label: room_4 }
       - { id: room_5, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level], label: room_5 }
       - { id: room_6, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level], label: room_6 }
-      - { id: room_7, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level], label: room_7 }
-      - { id: room_8, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level], label: room_8 }
       - { id: rooms_at_once, kind: choice, label: rooms_at_once, hint: rooms_at_once_hint, default: one,
           choices: [{ value: one, label: rooms_one }, { value: several, label: rooms_several }] }
       - { id: library, kind: text, label: library, hint: library_hint }
+      # Which player is picked when the screen starts: the tile's own, or one of its rooms.
+      - { id: default_player, kind: choice, label: default_player, hint: default_player_hint, default: own,
+          choices: [{ value: own, label: player_own }, { value: room_1, label: room_1 }, { value: room_2, label: room_2 },
+                    { value: room_3, label: room_3 }, { value: room_4, label: room_4 }, { value: room_5, label: room_5 },
+                    { value: room_6, label: room_6 }] }
+      # What the Library key opens: the list of kinds, the favourites, or one kind.
+      - { id: open_on, kind: choice, label: open_on, hint: open_on_hint, default: kinds,
+          choices: [{ value: kinds, label: open_kinds }, { value: favourites, label: open_favourites },
+                    { value: playlist, label: open_playlists }, { value: radio, label: open_radio },
+                    { value: album, label: open_albums }, { value: artist, label: open_artists },
+                    { value: track, label: open_tracks }, { value: podcast, label: open_podcasts }] }
+      # What the play key starts on a player that has nothing to play: a playlist or station by name or address.
+      - { id: idle_play, kind: text, label: idle_play, hint: idle_play_hint }
 
 cards:
   # Now playing, the rooms and the library, over the whole width of the glass. Its one picture is the cover of the
