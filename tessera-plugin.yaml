@@ -3,7 +3,7 @@
 # its keys. Every name, label and hint below is a key into translations/<language>.json, part "app". docs/MANIFEST.md
 # in the plugins repository has every field.
 id: music_rooms
-version: 0.7.0
+version: 0.8.0
 # 0.15: options of kind entity (the rooms); 0.17: the cover of the tile's own player by name (cover:).
 api: "0.17"
 icon: speaker-multiple
@@ -19,7 +19,9 @@ flash_kb: 24
 permissions:
   # A page of the Music Assistant library: favourites, playlists, radio and the rest, a few items at a time; and a
   # search, of the library and Music Assistant's providers (Spotify, TuneIn, ...).
-  ha_commands: ["call_service:music_assistant.get_library", "call_service:music_assistant.search"]
+  # An album's songs, as Home Assistant browses them on the tile's own player.
+  ha_commands: ["call_service:music_assistant.get_library", "call_service:music_assistant.search",
+                "media_player/browse_media"]
   # Play an item in the rooms picked, put rooms together for it and take them apart again, and the keys of Now playing.
   home_assistant_actions:
     - media_player.play_media
@@ -58,8 +60,7 @@ tiles:
       - { id: room_7, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type, supported_features], label: room_7 }
       - { id: room_8, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type, supported_features], label: room_8 }
       - { id: room_9, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type, supported_features], label: room_9 }
-      - { id: rooms_at_once, kind: choice, label: rooms_at_once, hint: rooms_at_once_hint, default: one,
-          choices: [{ value: one, label: rooms_one }, { value: several, label: rooms_several }] }
+      - { id: room_10, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type, supported_features], label: room_10 }
       - { id: library, kind: text, label: library, hint: library_hint }
       # The source the Library key opens: the list of kinds, the favourites, or one kind (Radio, Playlists, ...).
       - { id: open_on, kind: choice, label: open_on, hint: open_on_hint, default: kinds,

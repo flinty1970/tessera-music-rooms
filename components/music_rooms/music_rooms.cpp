@@ -76,7 +76,7 @@ class Players : public tessera::InPsram {
   // From the tile's entity and options, as create() has them.
   void configure(const char *own, JsonObjectConst options) {
     put(rooms_[0].id, own);
-    char key[8];
+    char key[9];
     for (int i = 1; i < SLOTS; ++i) {
       snprintf(key, sizeof(key), "room_%d", i);
       const char *id = options[key] | "";
@@ -85,7 +85,9 @@ class Players : public tessera::InPsram {
       for (int j = 1; j < i && !twice; ++j) twice = !strcmp(id, rooms_[j].id);
       put(rooms_[i].id, twice ? "" : id);
     }
-    several_ = !strcmp(options["rooms_at_once"] | "one", "several");
+    // Several rooms at once, always since 0.8.0 (the setting gave its place to a tenth room); a tile saved with One
+    // keeps it.
+    several_ = strcmp(options["rooms_at_once"] | "several", "one") != 0;
     put(library_, options["library"] | "");
     put(open_on_, options["open_on"] | "kinds");
   }
@@ -93,7 +95,7 @@ class Players : public tessera::InPsram {
   // The tile's data, as on_state has it: its own player, and the rooms under `entities`.
   void read(JsonObjectConst data) {
     if (!data["state"].isNull()) read(rooms_[0], data);
-    char key[8];
+    char key[9];
     for (int i = 1; i < SLOTS; ++i) {
       snprintf(key, sizeof(key), "room_%d", i);
       JsonObjectConst room = data["entities"][key];
@@ -111,9 +113,19 @@ class Players : public tessera::InPsram {
     const uint16_t picked = plugin_->chosen(index_) & used_mask();
     return picked ? picked : 1;
   }
-  int lead_slot() const {
-    const uint16_t picked = chosen();
-    for (int i = 0; i < SLOTS; ++i) if (picked & (1u << i)) return i;
+  // The room the others follow and the keys act on: of the rooms picked, the one that plays and that this tile did not
+  // join to another (what plays leads, whatever its place in the list), else one that plays, else the first.
+  int lead_slot() const { return lead_of(chosen()); }
+  int lead_of(uint16_t picked) const {
+    const uint16_t joined = plugin_->joined(index_);
+    for (int pass = 0; pass < 3; ++pass)
+      for (int i = 0; i < SLOTS; ++i) {
+        if (!(picked & (1u << i)) || !rooms_[i].used()) continue;
+        const bool playing = !strcmp(rooms_[i].state, "playing");
+        if (pass == 0 && playing && !(joined & (1u << i))) return i;
+        if (pass == 1 && playing) return i;
+        if (pass == 2) return i;
+      }
     return 0;
   }
   uint16_t used_mask() const {
@@ -134,8 +146,12 @@ class Players : public tessera::InPsram {
   // ticks; a room that cannot join gets the next item. While nothing plays, the ticks wait for the next item.
   void follow(uint16_t before) {
     const uint16_t now = chosen();
-    const int lead = lead_slot();
-    if (!(before & (1u << lead)) || strcmp(rooms_[lead].state, "playing")) return;
+    // The lead is what played before the tap: a room ticked now that plays something of its own joins it, not the
+    // other way round.
+    const uint16_t kept = before & now;
+    if (!kept) return;
+    const int lead = lead_of(kept);
+    if (strcmp(rooms_[lead].state, "playing")) return;
     uint16_t joined = plugin_->joined(index_);
     const uint16_t gone_out = before & ~now & joined;
     for (int i = 0; i < SLOTS; ++i)
@@ -184,8 +200,7 @@ class Players : public tessera::InPsram {
       note_ = Note::NOT_SENT;
       return false;
     }
-    int lead = 0;
-    while (!(rooms & (1u << lead))) ++lead;
+    const int lead = lead_of(rooms);
     const uint16_t others = rooms & ~(1u << lead);
     // The rooms that can join the first one play in step with it; the others (a Music Assistant group, a player that
     // cannot be joined, or every room when the first cannot lead) get the item on their own, not in step.
@@ -320,6 +335,7 @@ class PlayerTile : public tessera::Tile {
       lv_obj_set_pos(cover_, 0, 0);
       text_x = height_ + ui::px(12);
     }
+    text_x_ = shifted_ = text_x;
     const int text_w = std::max(1, width_ - text_x);
     where_ = ui::label(c.parent, Font::BODY, theme::MUTED);
     lv_obj_set_width(where_, text_w);
@@ -362,6 +378,18 @@ class PlayerTile : public tessera::Tile {
       if (own) ui::set_picture(cover_, std::string("cover:") + lead.id, tessera::Fit::COVER);
       if (own) lv_obj_remove_flag(cover_, LV_OBJ_FLAG_HIDDEN);
       else lv_obj_add_flag(cover_, LV_OBJ_FLAG_HIDDEN);
+      // Without the cover the words take the whole tile, so no empty frame stands where it was.
+      shift(own ? text_x_ : 0);
+    }
+  }
+
+  // The words' left edge, kept here: LVGL's own coordinates are not laid out yet right after create().
+  void shift(int x) {
+    if (x == shifted_) return;
+    shifted_ = x;
+    for (lv_obj_t *o : {where_, title_, artist_}) {
+      lv_obj_set_x(o, x);
+      lv_obj_set_width(o, std::max(1, width_ - x));
     }
   }
 
@@ -378,7 +406,7 @@ class PlayerTile : public tessera::Tile {
  private:
   MusicRooms *plugin_;
   Players *players_ = nullptr;
-  int index_ = -1, width_ = 0, height_ = 0;
+  int index_ = -1, width_ = 0, height_ = 0, text_x_ = 0, shifted_ = 0;
   lv_obj_t *cover_{}, *where_{}, *title_{}, *artist_{};
 };
 
@@ -427,6 +455,7 @@ class MusicCard : public tessera::Card {
       lv_obj_set_size(cover_, side, side);
       lv_obj_set_pos(cover_, 0, body_y + (body_h - side) / 2);
       cover_x_ = side + gap_ * 2;
+      shifted_ = cover_x_;
     }
     const int text_x = cover_x_;
     // What plays in the largest face whose two lines and the artist under them fit the room between head and keys.
@@ -543,10 +572,17 @@ class MusicCard : public tessera::Card {
       find_icon_ = ui::label(find_, Font::BODY_LARGE, theme::INK);
       ui::set_text(find_icon_, plugin_->text("search"));
       lv_obj_align(find_icon_, LV_ALIGN_CENTER, 0, 0);
+      // Open: an artist's albums, an album's songs; beside Search, shown for an artist or an album in the middle.
+      open_w_ = ui::text_width(plugin_->text("open"), Font::BODY_LARGE) + 2 + 3 * gap_;
+      open_ = button(width_ - play_w_ - find_w_ - open_w_ - 2 * gap_, 0, open_w_, key_, theme::RAISED);
+      open_text_ = ui::label(open_, Font::BODY_LARGE, theme::INK);
+      ui::set_text(open_text_, plugin_->text("open"));
+      lv_obj_align(open_text_, LV_ALIGN_CENTER, 0, 0);
       make_keyboard();
       hide(wheel_, true);
       hide(play_, true);
       hide(find_, true);
+      hide(open_, true);
     }
 #endif
 
@@ -576,6 +612,8 @@ class MusicCard : public tessera::Card {
     }
     style_wheel();
     restyle(find_, theme::RAISED);
+    restyle(open_, theme::RAISED);
+    ui::set_color(open_text_, theme::INK);
     restyle(field_, theme::RAISED);
     restyle(go_, theme::ACCENT);
     ui::set_color(find_icon_, theme::INK);
@@ -601,7 +639,10 @@ class MusicCard : public tessera::Card {
   bool on_back() override {
     switch (view_) {
       case View::ITEMS:
-        // A search's results go back to the whole list, the list to the kinds.
+        // An album's songs go back to its artist's albums where it came from there, an artist's albums to the list
+        // they were opened from; a search's results go back to the whole list, the list to the kinds.
+        if (opened_ == 2) { opened_ = from_artist_ ? 1 : 0; show(View::ITEMS); return true; }
+        if (opened_ == 1) { opened_ = 0; show(View::ITEMS); return true; }
         if (everywhere_) { view_ = View::SEARCH; paint(); return true; }
         if (query_[0]) { query_[0] = '\0'; show(View::ITEMS); return true; }
         show(View::KINDS);
@@ -642,6 +683,7 @@ class MusicCard : public tessera::Card {
         if (inside(kind_key_[i].box, p)) { pick_kind(kind_entry_[i]); return; }
     if (view_ == View::ITEMS && wheel_) {
       if (inside(play_, p)) play_chosen(*tile);
+      else if (inside(open_, p)) open_chosen();
       else if (inside(find_, p)) { view_ = View::SEARCH; paint(); }
       return;
     }
@@ -697,6 +739,8 @@ class MusicCard : public tessera::Card {
   static constexpr int ROWS = 6;
   struct Row { lv_obj_t *box = nullptr, *icon = nullptr, *text = nullptr, *side = nullptr, *mark = nullptr; int y = 0; };
   struct Item { char name[49] = "", uri[49] = "", type[16] = "", side[49] = ""; bool playable = false; };
+  // What the Open key opens: an artist (its albums) or an album (its songs).
+  enum Opened : uint8_t { CLOSED = 0, ARTIST = 1, ALBUM = 2 };
   // The items of the wheel, as many as a person turns through: kept in PSRAM, made when the card opens.
   static constexpr int SHELF = 120;
   struct Shelf : public tessera::InPsram { Item items[SHELF]; };
@@ -793,7 +837,8 @@ class MusicCard : public tessera::Card {
     const int pad = gap_ + ui::px(4);
     hide(library_, !now);
     const bool row = view_ == View::ITEMS && wheel_;
-    const int head_w = now ? width_ - lv_obj_get_width(library_) - gap_ : row ? width_ - play_w_ - find_w_ - 2 * gap_ : width_;
+    const int head_w = std::max(1, now ? width_ - lv_obj_get_width(library_) - gap_
+                                       : row ? width_ - play_w_ - find_w_ - open_w_ - 3 * gap_ : width_);
     lv_obj_set_width(head_, head_w);
     set_icon(head_icon_, tile.room_count() > 1 ? ICON_ROOMS : ICON_SPEAKER);
     lv_obj_set_pos(head_icon_, pad, (key_ - ui::line_height(Font::ICON_SMALL)) / 2);
@@ -804,6 +849,14 @@ class MusicCard : public tessera::Card {
     lv_obj_set_size(head_text_, std::max(1, head_w - text_x - more_w - pad - gap_), ui::line_height(Font::BODY_LARGE));
     lv_obj_set_pos(head_text_, text_x, (key_ - ui::line_height(Font::BODY_LARGE)) / 2);
     const std::string rooms = tile.rooms_text();
+    if (row && opened_) {
+      // An artist's albums, or an album's songs: the head names what is open.
+      set_icon(head_icon_, KINDS[opened_ == 1 ? 3 : 2].icon);
+      const std::string album = tessera::fill(plugin_->text("opened_album"), "album", open_album_);
+      ui::set_text(head_text_, opened_ == 1 ? std::string(open_artist_)
+                                            : tessera::fill(album.c_str(), "artist", open_artist_));
+      return;
+    }
     if (row && query_[0]) {
       // While a search shows its results, the head says what was searched in which kind.
       set_icon(head_icon_, everywhere_ ? ICON_ALL : KINDS[kind_].icon);
@@ -832,6 +885,7 @@ class MusicCard : public tessera::Card {
       hide(wheel_, true);
       hide(play_, true);
       hide(find_, true);
+      hide(open_, true);
     }
     if (view_ != View::SEARCH || !tile) {
       hide(field_, true);
@@ -878,6 +932,15 @@ class MusicCard : public tessera::Card {
       const bool own = tile.lead_slot() == 0 && !gone(lead.state) && lead.title[0];
       hide(cover_, !own);
       if (own) ui::set_picture(cover_, std::string("cover:") + lead.id, tessera::Fit::COVER);
+      // Without the cover what plays and who take the card's whole width.
+      const int x = own ? cover_x_ : 0;
+      if (x != shifted_) {
+        shifted_ = x;
+        for (lv_obj_t *o : {title_, artist_}) {
+          lv_obj_set_x(o, x);
+          lv_obj_set_width(o, std::max(1, width_ - x));
+        }
+      }
     }
   }
 
@@ -972,6 +1035,7 @@ class MusicCard : public tessera::Card {
 
   void pick_kind(int kind) {
     query_[0] = '\0';
+    opened_ = CLOSED;
     everywhere_ = kind == -2;
     if (everywhere_) { view_ = View::SEARCH; paint(); return; }
     if (kind < 0) { favourites_ = true; paint(); return; }
@@ -987,6 +1051,7 @@ class MusicCard : public tessera::Card {
       hide(wheel_, !any);
       hide(play_, !any);
       hide(find_, false);
+      if (!any) hide(open_, true);
       hide(note_, any);
       if (!any) ui::set_text(note_, plugin_->text(loading_ ? "loading" : failed_ ? "failed" : "empty"));
       if (any) paint_play();
@@ -1080,14 +1145,32 @@ class MusicCard : public tessera::Card {
     // of all music as several of those, the artists first.
     JsonArrayConst lists[4];
     int n = 0;
-    lists[n] = message["result"]["items"].as<JsonArrayConst>();
+    lists[n] = message["result"][opened_ == ALBUM ? "children" : "items"].as<JsonArrayConst>();
     if (!lists[n].isNull()) ++n;
+    else if (opened_ == ARTIST) lists[n++] = message["result"]["albums"].as<JsonArrayConst>();
     else if (!everywhere_) lists[n++] = message["result"][KINDS[kind_].found].as<JsonArrayConst>();
     else for (int k : EVERYTHING) lists[n++] = message["result"][KINDS[k].found].as<JsonArrayConst>();
     for (int l = 0; l < n; ++l)
     for (JsonObjectConst item : lists[l]) {
       if (total_ >= SHELF) break;
       Item &it = shelf_->items[total_];
+      if (opened_ == ALBUM) {
+        // A song of the album as Home Assistant browses it: "The Artist - The Song", its address, a track.
+        const char *title = item["title"] | "";
+        const size_t lead = strlen(open_artist_);
+        if (lead && !strncmp(title, open_artist_, lead) && !strncmp(title + lead, " - ", 3)) title += lead + 3;
+        put(it.name, title);
+        put(it.uri, item["media_content_id"] | "");
+        put(it.type, "track");
+        put(it.side, open_artist_);
+        it.playable = it.uri[0] != '\0' && (item["can_play"] | true);
+        if (!it.name[0]) continue;
+        ++total_;
+        ++got;
+        continue;
+      }
+      // An artist's albums: a search by its name also finds others', which stay out.
+      if (opened_ == ARTIST && strcasecmp(item["artists"][0]["name"] | "", open_artist_)) continue;
       put(it.name, item["name"] | "");
       if (!it.name[0]) continue;
       // A name is one line of the wheel.
@@ -1119,9 +1202,10 @@ class MusicCard : public tessera::Card {
       const Item &it = shelf_->items[i];
       if (i) lines += '\n';
       const int k = kind_of(it.type);
-      if (everywhere_ && k >= 0) lines += tessera::fill(plugin_->text(ONE[k]), "name", it.name);
+      const bool labels = everywhere_ && !opened_;
+      if (labels && k >= 0) lines += tessera::fill(plugin_->text(ONE[k]), "name", it.name);
       else lines += it.name;
-      if (everywhere_ && it.side[0] && (k == 2 || k == 4)) lines += std::string(" · ") + it.side;
+      if (labels && it.side[0] && (k == 2 || k == 4)) lines += std::string(" · ") + it.side;
     }
     lv_roller_set_options(wheel_, total_ ? lines.c_str() : " ", LV_ROLLER_MODE_NORMAL);
     lv_roller_set_visible_row_count(wheel_, 5);
@@ -1142,7 +1226,11 @@ class MusicCard : public tessera::Card {
   void paint_play() {
     const int i = chosen();
     if (i < 0) return;
-    const bool can = shelf_->items[i].playable;
+    const Item &it = shelf_->items[i];
+    const bool can = it.playable;
+    // Open for an artist (its albums, found by name) and an album whose address came whole (its songs).
+    const int k = kind_of(it.type);
+    hide(open_, !(k == 3 || (k == 2 && it.uri[0] && strlen(it.uri) < WHOLE)));
     restyle(play_, can ? theme::ACCENT : theme::RAISED);
     ui::set_color(play_icon_, can ? theme::ON_ACCENT : theme::SUBTLE);
     ui::set_color(play_text_, can ? theme::ON_ACCENT : theme::SUBTLE);
@@ -1227,6 +1315,7 @@ class MusicCard : public tessera::Card {
   void type_at(const tessera::Point &p) {
     if (inside(go_, p)) {
       if (everywhere_ && !query_[0]) return;
+      opened_ = CLOSED;
       show(View::ITEMS);
       return;
     }
@@ -1245,6 +1334,26 @@ class MusicCard : public tessera::Card {
       paint();
       return;
     }
+  }
+
+  void open_chosen() {
+    const int i = chosen();
+    if (i < 0) return;
+    const Item &it = shelf_->items[i];
+    const int k = kind_of(it.type);
+    if (k == 3) {
+      put(open_artist_, it.name);
+      opened_ = ARTIST;
+    } else if (k == 2) {
+      from_artist_ = opened_ == ARTIST;
+      put(open_album_, it.name);
+      if (it.side[0]) put(open_artist_, it.side);
+      put(open_uri_, it.uri);
+      opened_ = ALBUM;
+    } else {
+      return;
+    }
+    show(View::ITEMS);
   }
 
   void play_chosen(Players &tile) {
@@ -1286,8 +1395,29 @@ class MusicCard : public tessera::Card {
     searching_ = wheel_ && !q.empty();
     JsonDocument request;
     JsonObject data = request["data"].to<JsonObject>();
+    if (opened_ == ALBUM) {
+      // An album's songs, as Home Assistant browses them on the tile's own Music Assistant player.
+      searching_ = true;
+      request["ask"] = "media_player/browse_media";
+      data["entity_id"] = tile->room(0).id;
+      data["media_content_id"] = open_uri_;
+      data["media_content_type"] = "album";
+      asked_ = tessera::send(plugin_, request.as<JsonObjectConst>());
+      loading_ = asked_ != 0;
+      failed_ = asked_ == 0;
+      return;
+    }
     data["config_entry_id"] = tile->library();
-    if (searching_) {
+    if (opened_ == ARTIST) {
+      // An artist's albums: Music Assistant's search by the artist's name, in the library and its providers.
+      searching_ = true;
+      request["ask"] = "call_service:music_assistant.search";
+      data["name"] = open_artist_;
+      data["artist"] = open_artist_;
+      data["media_type"].to<JsonArray>().add("album");
+      data["limit"] = 12;
+      data["library_only"] = false;
+    } else if (searching_) {
       // A search asks Music Assistant's providers too (Spotify, TuneIn, ...), not only the library: the best matches
       // of the kind, as many as fit an answer whole.
       request["ask"] = "call_service:music_assistant.search";
@@ -1313,7 +1443,7 @@ class MusicCard : public tessera::Card {
 
   MusicRooms *plugin_;
   lv_obj_t *parent_{};
-  int width_ = 0, height_ = 0, tile_ = -1, gap_ = 0, key_ = 0, round_ = 0, cover_x_ = 0, rows_ = 0;
+  int width_ = 0, height_ = 0, tile_ = -1, gap_ = 0, key_ = 0, round_ = 0, cover_x_ = 0, rows_ = 0, shifted_ = 0;
   lv_obj_t *head_{}, *head_icon_{}, *head_text_{}, *head_more_{}, *library_{}, *library_text_{};
   lv_obj_t *cover_{}, *title_{}, *artist_{}, *volume_{}, *keys_[6] = {}, *key_icon_[6] = {};
   lv_obj_t *prev_{}, *prev_icon_{}, *next_{}, *next_icon_{}, *page_{}, *note_{};
@@ -1334,7 +1464,11 @@ class MusicCard : public tessera::Card {
   TypeKey type_[KEYS];
   char query_[33] = "";
   bool searching_ = false, everywhere_ = false;
-  int total_ = 0, play_w_ = 0, find_w_ = 0;
+  int total_ = 0, play_w_ = 0, find_w_ = 0, open_w_ = 0;
+  lv_obj_t *open_{}, *open_text_{};
+  uint8_t opened_ = CLOSED;
+  bool from_artist_ = false;
+  char open_artist_[49] = "", open_album_[49] = "", open_uri_[49] = "";
 };
 
 // ---- The plugin ----

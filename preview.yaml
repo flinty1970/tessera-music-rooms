@@ -8,7 +8,6 @@ tiles:
     options:
       room_1: media_player.bedroom
       room_2: media_player.office
-      rooms_at_once: several
       library: 01JABCDEFGHJKMNPQRSTVWXYZ0
       open_on: favourites
   - tile: player
@@ -69,6 +68,14 @@ commands:
       - { media_type: playlist, uri: "spotify--abcd1234://playlist/3aBcDeFgHiJkLmNoPqRsTu", name: The Lanterns Radio }
     radio: []
     podcasts: []
+
+  # An album's songs, as Home Assistant browses them.
+  "media_player/browse_media":
+    title: Harbour Lights
+    children:
+      - { title: "The Lanterns - Northern Line", media_content_id: "spotify--abcd1234://track/2aBcDeFgHiJkLmNoPqRsTu", can_play: true }
+      - { title: "The Lanterns - Low Tide", media_content_id: "spotify--abcd1234://track/4aBcDeFgHiJkLmNoPqRsTu", can_play: true }
+      - { title: "The Lanterns - Harbour Lights", media_content_id: "spotify--abcd1234://track/5aBcDeFgHiJkLmNoPqRsTu", can_play: true }
 
 pictures:
   "cover:media_player.kitchen": preview/cover.jpg

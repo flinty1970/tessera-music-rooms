@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.0
+
+- **Open** an artist to see their albums, and an album to see its songs, beside Play and Search; Play plays the one
+  in the middle (the whole artist, the whole album, or one song). Back goes up a step.
+- **Ten rooms** beside the tile's own player. Rooms at once gave its place to the tenth (a tile has at most twelve
+  settings): every tile now plays in the rooms you tick, one or several; a tap on All rooms ticks them all.
+- **What plays leads**: Next, Play/Pause and the volume act on the room that plays, and a room ticked joins it, whatever
+  their places in the list. Before, the first room of the list led, so Next could start that room's own old queue.
+- Playing in another room, the tile and Now playing show what plays across their whole width instead of beside an
+  empty frame: the Tessera app shows a tile only its own player's cover.
+
 ## 0.7.0
 
 - **A room ticked while music plays joins it at once**, in step (a Cast, a Google display, the stereo), and one

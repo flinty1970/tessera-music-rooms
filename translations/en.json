@@ -40,7 +40,9 @@
     "one_album": "Album: {name}",
     "one_playlist": "Playlist: {name}",
     "one_radio": "Radio: {name}",
-    "one_podcast": "Podcast: {name}"
+    "one_podcast": "Podcast: {name}",
+    "open": "Open",
+    "opened_album": "{album} · {artist}"
   },
   "app": {
     "name": "Music rooms",
@@ -55,10 +57,6 @@
     "room_5": "Room 5",
     "room_6": "Room 6",
     "room_hint": "Other Music Assistant players this tile may play in, beside its own: a speaker, or a Music Assistant group. Picking a room never moves what already plays.",
-    "rooms_at_once": "Rooms at once",
-    "rooms_at_once_hint": "One: the next item plays in the room you pick. Several: tick rooms, or All rooms, and it plays in all of them together.",
-    "rooms_one": "One",
-    "rooms_several": "Several",
     "library": "Music Assistant entry",
     "library_hint": "The ID of the Music Assistant integration: Settings, Devices & services, Music Assistant; it is the last part of the address of its entry.",
     "open_on": "Source",
@@ -73,6 +71,7 @@
     "open_podcasts": "Podcasts",
     "room_7": "Room 7",
     "room_8": "Room 8",
-    "room_9": "Room 9"
+    "room_9": "Room 9",
+    "room_10": "Room 10"
   }
 }
