@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.5
+
+- With the join script, every room ticked while music plays goes to Home Assistant, which knows the groups: a Cast
+  room joins (also to Whole House's music), a room already inside the playing Music Assistant group stays as it is,
+  and a room that cannot join (a screen's own speaker) gets the same song started on it, not in exact step.
+
 ## 0.12.4
 
 - **Whole House (a Music Assistant group) ticked while music plays** now takes the music over (Music Assistant's

@@ -217,12 +217,15 @@ class Players : public tessera::InPsram {
     const bool script = plugin_->join_script()[0] != '\0';
     for (int i = 0; i < SLOTS; ++i) {
       if (!(now & ~before & (1u << i)) || i == lead || !rooms_[i].used() || gone(rooms_[i].state)) continue;
-      if (joinable(lead) && joinable(i)) come |= 1u << i;
       // A Music Assistant group (Whole House) cannot join: with the join script what plays moves to it instead, and
       // the card then holds it.
-      else if (script && rooms_[i].group) groups |= 1u << i;
+      if (script && rooms_[i].group) groups |= 1u << i;
+      // With the join script every other room goes to Home Assistant, which knows the groups: a room joins, one
+      // already in a Music Assistant group that plays is left so, one that cannot join (a screen's speaker) gets the
+      // same item; without it only rooms that can join a lead that can.
+      else if (script || (joinable(lead) && joinable(i))) come |= 1u << i;
     }
-    if ((come || groups) && join(lead, come | groups)) joined |= come;
+    if ((come || groups) && join(lead, come | groups)) joined |= come & joinable_mask();
     plugin_->set_joined(index_, joined);
     for (int i = 0; i < SLOTS; ++i)
       if (groups & (1u << i)) { focus(i); break; }
