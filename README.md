@@ -27,8 +27,9 @@ library and play what you tap there, with Now playing, play and pause, skip and 
   turn on a wheel, like the alarm clock's time: swipe it, and **Play** at the top plays the one in the middle, in the
   rooms shown beside it. More come as you near the end. Now playing then says Starting and then what plays, or Did
   not start.
-- **Search** beside Play opens a keyboard: type part of a name and tap Search, and the wheel shows only the items of
-  that kind whose name holds it (artists in Artists, songs in Tracks).
+- **Search** beside Play opens a keyboard: type part of a name and tap Search, and the wheel shows the best matches
+  of that kind, from your library and from Music Assistant's providers such as Spotify. **Search all**, the last key
+  of the Library's grid, looks for artists, songs, albums and playlists at once.
 - The card's Back key goes up one step: from a search to the whole list, from the items to the kinds, from the kinds
   to Now playing, then closes.
 
@@ -44,9 +45,10 @@ library and play what you tap there, with Now playing, play and pause, skip and 
 
 ## Good to know
 
-- The library comes from Music Assistant's own `music_assistant.get_library`, four to six items at a time, and a
-  search uses its `search` field. It finds what is in your Music Assistant library, not everything a provider such as
-  Spotify has: add an artist or a song to the library in Music Assistant first.
+- The library comes from Music Assistant's own `music_assistant.get_library`, four to six items at a time; a search
+  from `music_assistant.search`, the library and the providers together (a dozen of one kind, or three of each).
+- The Tessera app gives a plugin at most 48 characters of a text, and a Spotify artist's or playlist's address is
+  longer: such an item plays by its name (and artist) through `music_assistant.play_media`, which finds it again.
 - An item whose Music Assistant address is longer than 48 characters shows faded and plays nothing: the Tessera app
   keeps no longer text for a plugin.
 - The cover on Now playing is the tile's own player's. Another room shows what plays and who, without a cover.

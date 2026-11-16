@@ -32,7 +32,15 @@
     "search": "Search",
     "search_in": "Search {kind}",
     "searched": "“{q}” in {kind}",
-    "space": "Space"
+    "space": "Space",
+    "search_all": "Search all",
+    "searched_all": "“{q}” in all music",
+    "one_artist": "Artist: {name}",
+    "one_track": "Song: {name}",
+    "one_album": "Album: {name}",
+    "one_playlist": "Playlist: {name}",
+    "one_radio": "Radio: {name}",
+    "one_podcast": "Podcast: {name}"
   },
   "app": {
     "name": "Music rooms",

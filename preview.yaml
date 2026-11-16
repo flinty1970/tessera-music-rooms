@@ -54,5 +54,21 @@ commands:
     order_by: sort_name
     media_type: playlist
 
+  # A search of all music, as music_assistant.search answers it: the library and the providers together.
+  "call_service:music_assistant.search":
+    artists:
+      - { media_type: artist, uri: "spotify--abcd1234://artist/0aBcDeFgHiJkLmNoPqRsTu", name: The Lanterns }
+    albums:
+      - { media_type: album, uri: "spotify--abcd1234://album/1aBcDeFgHiJkLmNoPqRsTu", name: Harbour Lights,
+          artists: [{ name: The Lanterns }] }
+    tracks:
+      - { media_type: track, uri: "spotify--abcd1234://track/2aBcDeFgHiJkLmNoPqRsTu", name: Northern Line,
+          artists: [{ name: The Lanterns }] }
+      - { media_type: track, uri: "library://track/41", name: Lantern Light, artists: [{ name: Nova Coast }] }
+    playlists:
+      - { media_type: playlist, uri: "spotify--abcd1234://playlist/3aBcDeFgHiJkLmNoPqRsTu", name: The Lanterns Radio }
+    radio: []
+    podcasts: []
+
 pictures:
   "cover:media_player.kitchen": preview/cover.jpg

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0
+
+- **Search finds music outside your library**: Spotify and Music Assistant's other providers, not only what you
+  added. An artist you never added (a band you just heard of) now comes up.
+- **Search all** in the Library's grid looks for artists, songs, albums and playlists at once; the wheel says which
+  each one is ("Artist: …", "Song: … · the artist").
+- An item whose address is too long for the Tessera app (a Spotify artist's, a playlist's) plays by its name through
+  Music Assistant, which finds it, instead of showing grey.
+
 ## 0.5.0
 
 - **Search**: a key beside Play opens a keyboard; type part of a name and the wheel shows only those artists, songs,

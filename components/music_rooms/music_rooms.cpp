@@ -16,7 +16,7 @@ namespace ui = tessera::ui;
 constexpr uint32_t ICON_SPEAKER = 0xF04C3, ICON_ROOMS = 0xF0D38, ICON_PLAY = 0xF040A, ICON_PAUSE = 0xF03E4,
                    ICON_NEXT = 0xF04AD, ICON_PREVIOUS = 0xF04AE, ICON_MINUS = 0xF075E, ICON_PLUS = 0xF075D,
                    ICON_CHECK = 0xF012C, ICON_RIGHT = 0xF0142, ICON_LEFT = 0xF0141, ICON_HEART = 0xF02D1,
-                   ICON_MUSIC = 0xF0387, ICON_BACKSPACE = 0xF004D;  // arrow-left: the icon font has no backspace
+                   ICON_MUSIC = 0xF0387, ICON_BACKSPACE = 0xF004D, ICON_ALL = 0xF075A;  // arrow-left: the icon font has no backspace
 
 // A text into a fixed field, cut on a character boundary.
 static void put(char *field, size_t size, const char *text) {
@@ -33,12 +33,25 @@ static bool gone(const char *state) { return !strcmp(state, "unavailable") || !s
 // The kinds of the Music Assistant library (music_assistant.get_library's media_type), in the order the card lists
 // them: the word of each, its icon, and how many a page asks for. Albums and tracks carry their artists, so fewer of
 // those fit the 3 KB an answer of the app may be whole.
-struct Kind { const char *type, *word; uint32_t icon; int page; };
+// `found` is the list music_assistant.search answers it in.
+struct Kind { const char *type, *word; uint32_t icon; int page; const char *found; };
 static const Kind KINDS[] = {
-    {"playlist", "playlists", 0xF0CB8, 6}, {"radio", "radio", 0xF0439, 6},    {"album", "albums", 0xF0025, 4},
-    {"artist", "artists", 0xF0803, 6},     {"track", "tracks", 0xF0387, 4},   {"podcast", "podcasts", 0xF0994, 6},
+    {"playlist", "playlists", 0xF0CB8, 6, "playlists"}, {"radio", "radio", 0xF0439, 6, "radio"},
+    {"album", "albums", 0xF0025, 4, "albums"},          {"artist", "artists", 0xF0803, 6, "artists"},
+    {"track", "tracks", 0xF0387, 4, "tracks"},          {"podcast", "podcasts", 0xF0994, 6, "podcasts"},
 };
+// The app gives a plugin at most 48 bytes of a text: a longer Music Assistant address (a Spotify artist's, a playlist's)
+// comes cut, and plays by its name instead.
+constexpr size_t WHOLE = 48;
 constexpr int KIND_COUNT = sizeof(KINDS) / sizeof(KINDS[0]);
+// A search of all music: these kinds (KINDS' indexes), a few of each, the artists first.
+static const int EVERYTHING[] = {3, 4, 2, 0};
+// The words in front of an item of a search of all music, by KINDS' index.
+static const char *const ONE[] = {"one_playlist", "one_radio", "one_album", "one_artist", "one_track", "one_podcast"};
+static int kind_of(const char *type) {
+  for (int k = 0; k < KIND_COUNT; ++k) if (!strcmp(KINDS[k].type, type)) return k;
+  return -1;
+}
 
 // ---- One player of a tile ----
 struct Room {
@@ -140,7 +153,7 @@ class Players : public tessera::InPsram {
   // first one first (media_player.join), and rooms this tile joined before that are no longer picked leave
   // (media_player.unjoin), so it plays in exactly the rooms picked. Then play_media on the first, with the item's own
   // Music Assistant address and kind. False when no room could take it or nothing could be sent.
-  bool play(const char *uri, const char *type) {
+  bool play(const char *uri, const char *type, const char *name = "", const char *artist = "") {
     uint16_t rooms = 0;
     for (int i = 0; i < SLOTS; ++i)
       if ((chosen() & (1u << i)) && rooms_[i].used() && !gone(rooms_[i].state)) rooms |= 1u << i;
@@ -169,14 +182,22 @@ class Players : public tessera::InPsram {
     }
     plugin_->set_joined(index_, together);
     // Home Assistant's play_media with the item's own Music Assistant address and kind: on the first room, and with a
-    // group among them on every room.
+    // group among them on every room. An address the app cut (a Spotify artist's) plays by name and artist through
+    // Music Assistant's own play_media, which finds the item itself.
+    const bool whole = uri[0] && strlen(uri) < WHOLE;
     JsonDocument item;
-    item["media_content_id"] = uri;
-    item["media_content_type"] = type;
+    if (whole) {
+      item["media_content_id"] = uri;
+      item["media_content_type"] = type;
+    } else {
+      item["media_id"] = name;
+      item["media_type"] = type;
+      if (artist[0] && (!strcmp(type, "track") || !strcmp(type, "album"))) item["artist"] = artist;
+    }
+    const char *service = whole ? "media_player.play_media" : "music_assistant.play_media";
     const uint16_t give = groups ? rooms : (1u << lead);
     for (int i = 0; i < SLOTS; ++i)
-      if (give & (1u << i))
-        sent = tessera::action("media_player.play_media", rooms_[i].id, item.as<JsonVariantConst>()) && sent;
+      if (give & (1u << i)) sent = tessera::action(service, rooms_[i].id, item.as<JsonVariantConst>()) && sent;
     note_ = sent ? Note::STARTING : Note::NOT_SENT;
     started_at_ = tessera::epoch();
     put(started_title_, rooms_[lead].title);
@@ -547,10 +568,16 @@ class MusicCard : public tessera::Card {
     switch (view_) {
       case View::ITEMS:
         // A search's results go back to the whole list, the list to the kinds.
+        if (everywhere_) { view_ = View::SEARCH; paint(); return true; }
         if (query_[0]) { query_[0] = '\0'; show(View::ITEMS); return true; }
         show(View::KINDS);
         return true;
-      case View::SEARCH: view_ = View::ITEMS; paint(); return true;
+      case View::SEARCH:
+        // From a search of all music back to the kinds; from a kind's search back to its list.
+        if (everywhere_) { everywhere_ = false; query_[0] = '\0'; show(View::KINDS); return true; }
+        view_ = View::ITEMS;
+        paint();
+        return true;
       case View::KINDS:
         if (favourites_) { favourites_ = false; kind_page_ = 0; show(View::KINDS); return true; }
         show(View::NOW);
@@ -615,8 +642,8 @@ class MusicCard : public tessera::Card {
         Item &it = items_[count_];
         put(it.name, item["name"] | "");
         const char *uri = item["uri"] | "";
-        // An address cut at the app's 48 bytes plays nothing: the row shows, faded, and takes no tap.
-        it.playable = uri[0] && strlen(uri) < 48;
+        // An address cut at the app's 48 bytes plays by the item's name.
+        it.playable = uri[0] != '\0';
         put(it.uri, uri);
         put(it.type, item["media_type"] | KINDS[kind_].type);
         put(it.side, item["artists"][0]["name"] | "");
@@ -641,7 +668,8 @@ class MusicCard : public tessera::Card {
   struct Shelf : public tessera::InPsram { Item items[SHELF]; };
   // How many the wheel asks for before a person turns it, so it opens with more than a page.
   static constexpr int FIRST_FILL = 18;
-  static constexpr int KIND_KEYS = KIND_COUNT + 1;
+  // Favourites, every kind, and Search all.
+  static constexpr int KIND_KEYS = KIND_COUNT + 2;
   struct KindKey { lv_obj_t *box = nullptr, *icon = nullptr, *text = nullptr; };
 
   lv_obj_t *button(int x, int y, int w, int h, theme::Role fill) {
@@ -744,9 +772,10 @@ class MusicCard : public tessera::Card {
     const std::string rooms = tile.rooms_text();
     if (row && query_[0]) {
       // While a search shows its results, the head says what was searched in which kind.
-      set_icon(head_icon_, KINDS[kind_].icon);
+      set_icon(head_icon_, everywhere_ ? ICON_ALL : KINDS[kind_].icon);
       const std::string searched = tessera::fill(plugin_->text("searched"), "q", query_);
-      ui::set_text(head_text_, tessera::fill(searched.c_str(), "kind", plugin_->text(KINDS[kind_].word)));
+      ui::set_text(head_text_, everywhere_ ? searched_all()
+                                           : tessera::fill(searched.c_str(), "kind", plugin_->text(KINDS[kind_].word)));
       return;
     }
     ui::set_text(head_text_, now ? rooms : tessera::fill(plugin_->text("plays_in"), "rooms", rooms));
@@ -845,7 +874,11 @@ class MusicCard : public tessera::Card {
   void paint_kinds() {
     for (int i = 0; i < rows_; ++i) hide(row_[i].box, true);
     const bool has_library = plugin_->players_at(tile_)->library()[0] != '\0';
-    const int entries = (favourites_ ? 0 : 1) + KIND_COUNT;
+    // Favourites (-1) first, then every kind, then Search all (-2); in the favourites, the kinds alone.
+    int listed[KIND_KEYS], entries = 0;
+    if (!favourites_) listed[entries++] = -1;
+    for (int k = 0; k < KIND_COUNT; ++k) listed[entries++] = k;
+    if (!favourites_ && wheel_) listed[entries++] = -2;
     if (!has_library) {
       for (int i = 0; i < KIND_KEYS; ++i) hide(kind_key_[i].box, true);
       hide(note_, false);
@@ -854,10 +887,7 @@ class MusicCard : public tessera::Card {
     }
     const int icon_w = ui::line_height(Font::ICON_SMALL) + ui::px(4), lh = ui::line_height(Font::BODY_LARGE);
     int widest = 0;
-    for (int i = 0; i < entries; ++i) {
-      const int kind = favourites_ ? i : i - 1;
-      widest = std::max(widest, ui::text_width(plugin_->text(kind < 0 ? "favourites" : KINDS[kind].word), Font::BODY_LARGE));
-    }
+    for (int i = 0; i < entries; ++i) widest = std::max(widest, ui::text_width(kind_word(listed[i]), Font::BODY_LARGE));
     // The most keys across that keep every word whole and every key a finger's height, all on the card: with the icon
     // over the word where the key is tall enough, else beside it. Two across, smaller, when nothing else fits.
     // On a small card the keys take the room of the head too (Now playing shows where it plays).
@@ -879,13 +909,13 @@ class MusicCard : public tessera::Card {
     for (int i = 0; i < KIND_KEYS; ++i) {
       KindKey &k = kind_key_[i];
       if (i >= entries) { hide(k.box, true); continue; }
-      const int kind = favourites_ ? i : i - 1;
+      const int kind = listed[i];
       kind_entry_[i] = kind;
       hide(k.box, false);
       lv_obj_set_pos(k.box, (i % cols) * (kw + gap_), top + (i / cols) * (kh + gap_));
       lv_obj_set_size(k.box, kw, kh);
-      set_icon(k.icon, kind < 0 ? ICON_HEART : KINDS[kind].icon);
-      ui::set_text(k.text, plugin_->text(kind < 0 ? "favourites" : KINDS[kind].word));
+      set_icon(k.icon, kind == -1 ? ICON_HEART : kind == -2 ? ICON_ALL : KINDS[kind].icon);
+      ui::set_text(k.text, kind_word(kind));
       if (stacked) {
         lv_obj_set_width(k.icon, kw);
         lv_obj_set_pos(k.icon, 0, (kh - icon_w - lh) / 2);
@@ -902,8 +932,14 @@ class MusicCard : public tessera::Card {
     }
   }
 
+  const char *kind_word(int kind) const {
+    return plugin_->text(kind == -1 ? "favourites" : kind == -2 ? "search_all" : KINDS[kind].word);
+  }
+
   void pick_kind(int kind) {
     query_[0] = '\0';
+    everywhere_ = kind == -2;
+    if (everywhere_) { view_ = View::SEARCH; paint(); return; }
     if (kind < 0) { favourites_ = true; paint(); return; }
     kind_ = kind;
     offset_ = 0;
@@ -990,7 +1026,7 @@ class MusicCard : public tessera::Card {
       return;
     }
     if (view_ == View::ITEMS && i < count_ && items_[i].playable) {
-      tile.play(items_[i].uri, items_[i].type);
+      tile.play(items_[i].uri, items_[i].type, items_[i].name, items_[i].side);
       show(View::NOW);
     }
   }
@@ -1006,7 +1042,16 @@ class MusicCard : public tessera::Card {
       return;
     }
     int got = 0;
-    for (JsonObjectConst item : message["result"]["items"].as<JsonArrayConst>()) {
+    // A page of the library comes as `items`, a search as the kind's own list (`artists`, `tracks`, ...); a search
+    // of all music as several of those, the artists first.
+    JsonArrayConst lists[4];
+    int n = 0;
+    lists[n] = message["result"]["items"].as<JsonArrayConst>();
+    if (!lists[n].isNull()) ++n;
+    else if (!everywhere_) lists[n++] = message["result"][KINDS[kind_].found].as<JsonArrayConst>();
+    else for (int k : EVERYTHING) lists[n++] = message["result"][KINDS[k].found].as<JsonArrayConst>();
+    for (int l = 0; l < n; ++l)
+    for (JsonObjectConst item : lists[l]) {
       if (total_ >= SHELF) break;
       Item &it = shelf_->items[total_];
       put(it.name, item["name"] | "");
@@ -1014,15 +1059,16 @@ class MusicCard : public tessera::Card {
       // A name is one line of the wheel.
       for (char *ch = it.name; *ch; ++ch) if (*ch == '\n' || *ch == '\r') *ch = ' ';
       const char *uri = item["uri"] | "";
-      // An address cut at the app's 48 bytes plays nothing: the Play key says so by staying grey.
-      it.playable = uri[0] && strlen(uri) < 48;
+      // An address cut at the app's 48 bytes plays by the item's name.
+      it.playable = uri[0] != '\0';
       put(it.uri, uri);
       put(it.type, item["media_type"] | KINDS[kind_].type);
       put(it.side, item["artists"][0]["name"] | "");
       ++total_;
       ++got;
     }
-    more_ = got >= KINDS[kind_].page && total_ < SHELF;
+    // A search answers once, with as many as it found: no more to ask after it.
+    more_ = !searching_ && got >= KINDS[kind_].page && total_ < SHELF;
     fill_wheel();
     if (more_ && total_ < FIRST_FILL) ask();
     paint();
@@ -1036,8 +1082,12 @@ class MusicCard : public tessera::Card {
     const uint32_t chosen = total_ ? std::min<uint32_t>(lv_roller_get_selected(wheel_), total_ - 1) : 0;
     std::string lines;
     for (int i = 0; i < total_; ++i) {
+      const Item &it = shelf_->items[i];
       if (i) lines += '\n';
-      lines += shelf_->items[i].name;
+      const int k = kind_of(it.type);
+      if (everywhere_ && k >= 0) lines += tessera::fill(plugin_->text(ONE[k]), "name", it.name);
+      else lines += it.name;
+      if (everywhere_ && it.side[0] && (k == 2 || k == 4)) lines += std::string(" · ") + it.side;
     }
     lv_roller_set_options(wheel_, total_ ? lines.c_str() : " ", LV_ROLLER_MODE_NORMAL);
     lv_roller_set_visible_row_count(wheel_, 5);
@@ -1093,6 +1143,8 @@ class MusicCard : public tessera::Card {
 
   // The search: what is typed and the search key in the top row, the keys in five rows under it, as large as the
   // card allows. The keys are laid out here, as the kinds' are.
+  std::string searched_all() const { return tessera::fill(plugin_->text("searched_all"), "q", query_); }
+
   void paint_search() {
     const int lh = ui::line_height(Font::BODY_LARGE);
     const int go_tw = ui::text_width(plugin_->text("search"), Font::BODY_LARGE) + 2;
@@ -1110,6 +1162,7 @@ class MusicCard : public tessera::Card {
     lv_obj_set_pos(field_text_, gap_ + ui::px(4), (key_ - fh) / 2);
     // What is typed, with a bar where the next letter comes; the kind it searches while nothing is typed.
     ui::set_text(field_text_, query_[0] ? std::string(query_) + "|"
+                                        : everywhere_ ? std::string(plugin_->text("search_all"))
                                         : tessera::fill(plugin_->text("search_in"), "kind", plugin_->text(KINDS[kind_].word)));
     ui::set_color(field_text_, query_[0] ? theme::INK : theme::MUTED);
     const int top = key_ + gap_, g = ui::px(6);
@@ -1139,6 +1192,7 @@ class MusicCard : public tessera::Card {
   // A tap on the keyboard: a letter, a digit or a space at the end, delete the last, or search.
   void type_at(const tessera::Point &p) {
     if (inside(go_, p)) {
+      if (everywhere_ && !query_[0]) return;
       show(View::ITEMS);
       return;
     }
@@ -1162,7 +1216,7 @@ class MusicCard : public tessera::Card {
   void play_chosen(Players &tile) {
     const int i = chosen();
     if (i < 0 || !shelf_->items[i].playable) return;
-    tile.play(shelf_->items[i].uri, shelf_->items[i].type);
+    tile.play(shelf_->items[i].uri, shelf_->items[i].type, shelf_->items[i].name, shelf_->items[i].side);
     show(View::NOW);
   }
 
@@ -1192,19 +1246,32 @@ class MusicCard : public tessera::Card {
     failed_ = false;
     more_ = false;
     if (!tile || !tile->library()[0]) { failed_ = true; return; }
-    JsonDocument request;
-    request["ask"] = "call_service:music_assistant.get_library";
-    JsonObject data = request["data"].to<JsonObject>();
-    data["config_entry_id"] = tile->library();
-    data["media_type"] = KINDS[kind_].type;
-    if (favourites_) data["favorite"] = true;
-    data["limit"] = wheel_ ? KINDS[kind_].page : page_size();
-    data["offset"] = wheel_ ? total_ : offset_;
-    data["order_by"] = "sort_name";
-    // What was typed, without a space at its end: Music Assistant finds it in the names of the kind's items.
+    // What was typed, without a space at its end.
     std::string q = query_;
     while (!q.empty() && q.back() == ' ') q.pop_back();
-    if (wheel_ && !q.empty()) data["search"] = q;
+    searching_ = wheel_ && !q.empty();
+    JsonDocument request;
+    JsonObject data = request["data"].to<JsonObject>();
+    data["config_entry_id"] = tile->library();
+    if (searching_) {
+      // A search asks Music Assistant's providers too (Spotify, TuneIn, ...), not only the library: the best matches
+      // of the kind, as many as fit an answer whole.
+      request["ask"] = "call_service:music_assistant.search";
+      data["name"] = q;
+      JsonArray types = data["media_type"].to<JsonArray>();
+      if (everywhere_) for (int k : EVERYTHING) types.add(KINDS[k].type);
+      else types.add(KINDS[kind_].type);
+      // A few of each kind of all music; a kind alone, more.
+      data["limit"] = everywhere_ ? 3 : KINDS[kind_].page * 2;
+      data["library_only"] = false;
+    } else {
+      request["ask"] = "call_service:music_assistant.get_library";
+      data["media_type"] = KINDS[kind_].type;
+      if (favourites_) data["favorite"] = true;
+      data["limit"] = wheel_ ? KINDS[kind_].page : page_size();
+      data["offset"] = wheel_ ? total_ : offset_;
+      data["order_by"] = "sort_name";
+    }
     asked_ = tessera::send(plugin_, request.as<JsonObjectConst>());
     loading_ = asked_ != 0;
     failed_ = asked_ == 0;
@@ -1232,6 +1299,7 @@ class MusicCard : public tessera::Card {
   lv_obj_t *field_{}, *field_text_{}, *go_{}, *go_text_{};
   TypeKey type_[KEYS];
   char query_[33] = "";
+  bool searching_ = false, everywhere_ = false;
   int total_ = 0, play_w_ = 0, find_w_ = 0;
 };
 
