@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.4
+
+- While Whole House (a Music Assistant group) plays and the keys act on it, Rooms ticks the speakers that play in it:
+  a tap takes one out, or puts one back in. Needs the updated join script.
+
 ## 0.13.3
 
 - Unticking a room goes through the join script, which knows the real lead of the group: unticking the lead leaves

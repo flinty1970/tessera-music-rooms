@@ -12,6 +12,8 @@
 # script, Edit in YAML, paste this), then give each screen `join_script: script.music_rooms_join` under `music_rooms:`.
 # - With leave: true (a room unticked on the screen), the rooms leave the group; when the lead leaves, the music goes
 #   on in the rooms left (transfer_queue to the first, the others join it). A room already grouped is not joined again.
+# - With toggle: true (a room tapped while Whole House plays), a member that plays leaves Whole House and any other
+#   room joins it.
 # - With move: true (the screen's Move here), what plays moves to the first of members alone.
 alias: Music rooms – join rooms
 description: 'Adds rooms to what a player plays: a room that can group with it (a Cast or Sonos speaker) joins the group through
@@ -38,6 +40,11 @@ fields:
   leave:
     description: Take members out of the group instead of adding them; when the lead leaves, the music goes on in the rooms
       left.
+    selector:
+      boolean: {}
+  toggle:
+    description: 'While a Music Assistant group player (Whole House) plays: a member that plays leaves it, any other room
+      joins it.'
     selector:
       boolean: {}
 max: 20
@@ -126,6 +133,29 @@ sequence:
       target:
         entity_id: '{{ leaving | reject("eq", owner) | list }}'
   - stop: Left.
+- if:
+  - condition: template
+    value_template: '{{ (toggle | default(false) | bool) and player_group }}'
+  then:
+  - variables:
+      room: '{{ (members if members is list else [members]) | first }}'
+  - if:
+    - condition: template
+      value_template: '{{ room in group and states(room) in [''playing'', ''paused'', ''buffering''] }}'
+    then:
+    - action: media_player.unjoin
+      continue_on_error: true
+      target:
+        entity_id: '{{ room }}'
+    else:
+    - action: media_player.join
+      continue_on_error: true
+      data:
+        group_members:
+        - '{{ room }}'
+      target:
+        entity_id: '{{ owner }}'
+  - stop: Toggled.
 - variables:
     asked: '{{ (members if members is list else [members]) | reject(''eq'', lead) | reject(''eq'', player) | reject(''eq'',
       owner) | list }}'

@@ -374,6 +374,25 @@ class Players : public tessera::InPsram {
     return tessera::action("media_player.join", rooms_[lead].id, data.as<JsonVariantConst>());
   }
 
+  // While a Music Assistant group (Whole House) plays and the keys act on it: its speakers that play are in it, and a
+  // tap on a room takes it out or puts it in (the join script's toggle, which knows the group's members).
+  bool group_playing() const {
+    const Room &l = rooms_[lead_slot()];
+    return plugin_->join_script()[0] && l.used() && l.group &&
+           (!strcmp(l.state, "playing") || !strcmp(l.state, "paused") || !strcmp(l.state, "buffering"));
+  }
+  bool in_group_now(int slot) const {
+    return group_playing() && slot != lead_slot() && !rooms_[slot].group && !strcmp(rooms_[slot].state, "playing");
+  }
+  bool toggle_in_group(int slot) {
+    JsonDocument data;
+    JsonObject into = data["variables"].to<JsonObject>();
+    into["player"] = rooms_[lead_slot()].id;
+    into["members"].to<JsonArray>().add(rooms_[slot].id);
+    into["toggle"] = true;
+    return tessera::action("script.turn_on", plugin_->join_script(), data.as<JsonVariantConst>());
+  }
+
   // These rooms leave the group the first room plays in: the join script's leave.
   bool leave(int lead, uint16_t rooms) {
     JsonDocument data;
@@ -1491,6 +1510,12 @@ class MusicCard : public tessera::Card {
         continue;
       }
       const Room &r = tile.room(listed[at]);
+      if (tile.group_playing() && listed[at] != tile.lead_slot() && !r.group) {
+        // Whole House plays: its speakers that play are ticked; a tap takes one out or puts one in.
+        row(i, ICON_SPEAKER, r.name, gone(r.state) ? plugin_->text("unavailable") : "", tile.in_group_now(listed[at]),
+            gone(r.state));
+        continue;
+      }
       const Players::Add add = tile.can_add(listed[at]);
       const bool cannot = add == Players::Add::NO;
       row(i, ICON_SPEAKER, r.name,
@@ -1659,6 +1684,11 @@ class MusicCard : public tessera::Card {
         return;
       }
       if (gone(tile.room(slot).state)) return;
+      if (tile.group_playing() && slot != tile.lead_slot() && !tile.room(slot).group) {
+        tile.toggle_in_group(slot);
+        paint();
+        return;
+      }
       const Players::Add add = tile.can_add(slot);
       if (add == Players::Add::NO) {
         plugin_->explain(tile.room(slot).name, tile.room(tile.lead_slot()).name, false);

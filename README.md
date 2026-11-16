@@ -77,7 +77,8 @@ volume, the groups in colour, and the library and search. See `dashboard/README.
   screen's own speaker, on either side) says **Moves here**: a tap moves the music to it (with the join script,
   `music_assistant.transfer_queue`) and a popup says why it moved instead of joining; the keys then act on that room.
   From the Office screen's speaker to the Stereo and back, say. Without the join script such a room is grey,
-  **Can't join**. A Music Assistant group (Whole House) can always take the music over.
+  **Can't join**. A Music Assistant group (Whole House) can always take the music over. While Whole House plays and
+  the keys act on it, Rooms ticks its speakers that play: a tap takes one out of it or puts one back in.
 - **Library** shows Favourites, Playlists, Radio, Albums, Artists, Tracks and Podcasts as large keys. A kind's items
   turn on a wheel, like the alarm clock's time: swipe it, and **Play** at the top plays the one in the middle, in the
   rooms shown beside it. More come as you near the end. Now playing then says Starting and then what plays, or Did
