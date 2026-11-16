@@ -854,14 +854,21 @@ void MusicRooms::setup() {
 }
 
 Players *MusicRooms::players(int tile) {
-  if (tile < 0 || tile >= TILES) return nullptr;
-  if (!players_[tile]) players_[tile] = new Players(this, tile);
-  return players_[tile];
+  if (tile < 0) return nullptr;
+  Entry *e = entry(tile);
+  if (!e) {
+    // A free entry; past 16 Music tiles on one screen the tile shows "Choose a player".
+    for (Entry &free : entries_) if (free.tile < 0) { e = &free; break; }
+    if (!e) return nullptr;
+    e->tile = tile;
+  }
+  if (!e->players) e->players = new Players(this, tile);
+  return e->players;
 }
 
 int MusicRooms::find(const char *entity) const {
-  for (int i = 0; i < TILES; ++i)
-    if (players_[i] && !strcmp(players_[i]->room(0).id, entity)) return i;
+  for (const Entry &e : entries_)
+    if (e.players && !strcmp(e.players->room(0).id, entity)) return e.tile;
   return -1;
 }
 

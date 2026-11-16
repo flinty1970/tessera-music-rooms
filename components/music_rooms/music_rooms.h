@@ -9,8 +9,9 @@ class MusicCard;
 
 // The places a tile keeps its players in: its own (0) and its nine rooms (the options room_1 to room_9).
 constexpr int SLOTS = 10;
-// Tiles a layout has at most, for what the plugin keeps of each (its picked rooms) by the tile's index.
-constexpr int TILES = 64;
+// Music tiles a layout has at most. The plugin keeps what it holds of each by the tile's slot on the screen, which can
+// be any number (a screen of many pages and top bar items has slots past 80), so it is a short table, not an array.
+constexpr int TILES = 16;
 
 // The plugin: a tile ("player") and its card ("music"). The plugin keeps each tile's players (Players, in PSRAM) and
 // which rooms it plays in next, so a tile made again (another size, a page that came back) keeps them and the card has
@@ -23,23 +24,34 @@ class MusicRooms : public Component, public tessera::Plugin {
 
   // The rooms a tile plays in next, one bit per slot (bit 0: its own player), and those this plugin put together with
   // the first of them for an item, to take apart when they are no longer picked.
-  uint16_t chosen(int tile) const { return tile >= 0 && tile < TILES ? chosen_[tile] : 0; }
-  void set_chosen(int tile, uint16_t rooms) { if (tile >= 0 && tile < TILES) chosen_[tile] = rooms; }
-  uint16_t joined(int tile) const { return tile >= 0 && tile < TILES ? joined_[tile] : 0; }
-  void set_joined(int tile, uint16_t rooms) { if (tile >= 0 && tile < TILES) joined_[tile] = rooms; }
+  uint16_t chosen(int tile) const { const Entry *e = entry(tile); return e ? e->chosen : 0; }
+  void set_chosen(int tile, uint16_t rooms) { if (Entry *e = entry(tile)) e->chosen = rooms; }
+  uint16_t joined(int tile) const { const Entry *e = entry(tile); return e ? e->joined : 0; }
+  void set_joined(int tile, uint16_t rooms) { if (Entry *e = entry(tile)) e->joined = rooms; }
 
   // The players of a layout's tile, made on first use and kept in PSRAM: the tile fills them, the card reads them.
   Players *players(int tile);
-  Players *players_at(int tile) const { return tile >= 0 && tile < TILES ? players_[tile] : nullptr; }
-  // The index of a tile of this player, -1 for none.
+  Players *players_at(int tile) const { const Entry *e = entry(tile); return e ? e->players : nullptr; }
+  // The slot of a tile of this player, -1 for none.
   int find(const char *entity) const;
 
   MusicCard *card_ = nullptr;  // the card that is open, to hand it the library's answers
 
  protected:
-  uint16_t chosen_[TILES] = {};
-  uint16_t joined_[TILES] = {};
-  Players *players_[TILES] = {};
+  struct Entry {
+    int tile = -1;  // the tile's slot on the screen, -1 for an unused entry
+    uint16_t chosen = 0, joined = 0;
+    Players *players = nullptr;
+  };
+  Entry *entry(int tile) {
+    for (Entry &e : entries_) if (tile >= 0 && e.tile == tile) return &e;
+    return nullptr;
+  }
+  const Entry *entry(int tile) const {
+    for (const Entry &e : entries_) if (tile >= 0 && e.tile == tile) return &e;
+    return nullptr;
+  }
+  Entry entries_[TILES];
 };
 
 }  // namespace esphome::music_rooms

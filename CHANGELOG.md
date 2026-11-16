@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+- Fixed: on a screen with many pages, the tile showed "Choose a player" although its player was set.
+
 ## 0.3.0
 - **Nine rooms** beside the tile's own player, and Music Assistant **groups** as rooms: a group plays on all its
   speakers in sync. Ticked with other rooms, a group gets the item on its own beside them.
