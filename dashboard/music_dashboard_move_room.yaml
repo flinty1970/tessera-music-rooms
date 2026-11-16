@@ -1,0 +1,60 @@
+# Music rooms dashboard: Move on a room's row. Add it as a script with the id music_dashboard_move_room.
+# What plays (the controlled room, its group, or Whole House while it plays) moves to that room alone.
+alias: Music dashboard – move the music to a room
+description: 'Move on a room of the music dashboard: what plays (in the controlled room, its group or the Music Assistant
+  group player such as Whole House) moves to that room alone (music_assistant.transfer_queue), and the dashboard then controls
+  it.'
+mode: queued
+max: 10
+fields:
+  room:
+    description: The media player the music moves to.
+    selector:
+      entity:
+        domain: media_player
+sequence:
+- variables:
+    chosen: '{{ states(''input_select.music_dashboard_room'') }}'
+- variables:
+    owner: '{% set q = state_attr(chosen, ''active_queue'') %}{% set g = states.media_player | selectattr(''attributes.mass_player_type'',
+      ''defined'') | selectattr(''attributes.mass_player_type'', ''eq'', ''group'') | selectattr(''attributes.active_queue'',
+      ''defined'') | selectattr(''attributes.active_queue'', ''eq'', q) | map(attribute=''entity_id'') | list %}{{ g[0] if
+      q and g and is_state(g[0], [''playing'', ''paused'', ''buffering'']) else chosen }}'
+- variables:
+    grp_mode: '{{ is_state_attr(owner, ''mass_player_type'', ''group'') }}'
+- variables:
+    group: '{{ state_attr(owner if grp_mode else chosen, ''group_members'') or [] }}'
+- variables:
+    lead: '{{ owner if grp_mode else (group[0] if group | length > 1 else chosen) }}'
+    room_is_group: '{{ is_state_attr(room, ''mass_player_type'', ''group'') }}'
+- if:
+  - condition: template
+    value_template: '{{ room == lead }}'
+  then:
+  - stop: The music already plays there.
+- if:
+  - condition: template
+    value_template: '{{ states(lead) in [''playing'', ''paused'', ''buffering''] }}'
+  then:
+  - if:
+    - condition: template
+      value_template: '{{ not grp_mode and room in group }}'
+    then:
+    - action: media_player.unjoin
+      continue_on_error: true
+      target:
+        entity_id: '{{ room }}'
+    - delay:
+        seconds: 1
+  - action: music_assistant.transfer_queue
+    continue_on_error: true
+    data:
+      auto_play: true
+      source_player: '{{ lead }}'
+    target:
+      entity_id: '{{ room }}'
+- action: input_select.select_option
+  data:
+    option: '{{ room }}'
+  target:
+    entity_id: input_select.music_dashboard_room

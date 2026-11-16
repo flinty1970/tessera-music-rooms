@@ -67,7 +67,9 @@ volume, the groups in colour, and the library and search. See `dashboard/README.
   the room they act on and all the rooms it plays in ("All 35 %"), each from its own level.
 - **Playing**, beside Library, lists every room of the tile with what it plays, those that play first. A tap on a room
   takes it over: Now playing and its keys are that room's and the next item plays there, while the other rooms go on
-  with their own music. Under the wheel, the volume of the room in the middle, each room its own. Each room keeps its own queue in Music Assistant, so one room can play one Spotify account,
+  with their own music. **Move here**, beside it, moves what plays (the room you control, its group, or Whole House) to
+  the room in the middle, alone: from Whole House to the Google Home in one tap (with the join script). Under the
+  wheel, the volume of the room in the middle, each room its own. Each room keeps its own queue in Music Assistant, so one room can play one Spotify account,
   another the other account and a third the radio.
 - The rooms key at the top opens **Rooms**: a tap adds a room or takes it out, and **All rooms** picks every room that
   can play with the one that plays. A room Home Assistant cannot reach is marked Unavailable.

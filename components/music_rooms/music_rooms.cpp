@@ -370,6 +370,20 @@ class Players : public tessera::InPsram {
     return tessera::action("media_player.join", rooms_[lead].id, data.as<JsonVariantConst>());
   }
 
+  // What plays in the first room (its group, or the Music Assistant group it plays in) moves to this room alone: the
+  // join script's move (music_assistant.transfer_queue). False without the join script or while nothing plays.
+  bool move_to(int slot) {
+    const char *script = plugin_->join_script();
+    const int from = lead_slot();
+    if (!script[0] || slot == from || !rooms_[slot].used() || !rooms_[from].used()) return false;
+    JsonDocument data;
+    JsonObject into = data["variables"].to<JsonObject>();
+    into["player"] = rooms_[from].id;
+    into["members"].to<JsonArray>().add(rooms_[slot].id);
+    into["move"] = true;
+    return tessera::action("script.turn_on", script, data.as<JsonVariantConst>());
+  }
+
   // The keys of Now playing, on the first room (a group's lead plays for all of it).
   void play_pause() {
     const Room &lead = rooms_[lead_slot()];
@@ -483,16 +497,18 @@ class Players : public tessera::InPsram {
   }
 
   // A start that took: the first room plays something else than before, or plays where it did not. One that did not
-  // take within 15 seconds says so.
+  // take within 30 seconds says so, until the room plays.
   void settle(uint32_t now) {
-    if (note_ != Note::STARTING || !now) return;
     const Room &lead = rooms_[lead_slot()];
     const bool playing = !strcmp(lead.state, "playing");
+    // A room that started late (a group, a Cast speaker waking up) is not "did not start" once it plays.
+    if (note_ == Note::NOT_STARTED && playing) { note_ = Note::NONE; return; }
+    if (note_ != Note::STARTING || !now) return;
     if (playing && (strcmp(started_state_, "playing") || strcmp(started_title_, lead.title))) {
       note_ = Note::NONE;
       return;
     }
-    if (started_at_ && now > started_at_ + 15) note_ = playing ? Note::NONE : Note::NOT_STARTED;
+    if (started_at_ && now > started_at_ + 30) note_ = playing ? Note::NONE : Note::NOT_STARTED;
   }
 
  private:
@@ -884,6 +900,12 @@ class MusicCard : public tessera::Card {
       take_text_ = ui::label(take_, Font::BODY_LARGE, theme::ON_ACCENT);
       ui::set_text(take_text_, plugin_->text("take"));
       lv_obj_align(take_text_, LV_ALIGN_CENTER, 0, 0);
+      // Move here: what plays moves to the room in the middle of the wheel.
+      move_w_ = ui::text_width(plugin_->text("move_here"), Font::BODY_LARGE) + 2 + 4 * gap_;
+      move_ = button(width_ - take_w_ - gap_ - move_w_, 0, move_w_, key_, theme::RAISED);
+      move_text_ = ui::label(move_, Font::BODY_LARGE, theme::INK);
+      ui::set_text(move_text_, plugin_->text("move_here"));
+      lv_obj_align(move_text_, LV_ALIGN_CENTER, 0, 0);
       // The volume of the room in the middle of the wheel, under it: each room its own, also while several play together.
       const int volume_w = ui::text_width("100 %", Font::BODY_LARGE) + ui::px(8);
       const int row_y = height_ - key_;
@@ -901,6 +923,7 @@ class MusicCard : public tessera::Card {
       style_wheel();
       hide(rooms_wheel_, true);
       hide(take_, true);
+      hide(move_, true);
       for (lv_obj_t *o : {room_down_, room_up_, room_volume_}) hide(o, true);
       make_keyboard();
       hide(wheel_, true);
@@ -937,6 +960,8 @@ class MusicCard : public tessera::Card {
     restyle(everywhere_key_, theme::RAISED);
     restyle(take_, theme::ACCENT);
     ui::set_color(take_text_, theme::ON_ACCENT);
+    restyle(move_, theme::RAISED);
+    ui::set_color(move_text_, theme::INK);
     ui::set_color(everywhere_text_, theme::INK);
     restyle(prev_, theme::RAISED);
     restyle(next_, theme::RAISED);
@@ -1047,6 +1072,12 @@ class MusicCard : public tessera::Card {
       if (inside(room_down_, p) || inside(room_up_, p)) {
         tile->step_volume(inside(room_up_, p) ? 5 : -5, slot);
         paint();
+        return;
+      }
+      if (move_ && !lv_obj_has_flag(move_, LV_OBJ_FLAG_HIDDEN) && inside(move_, p)) {
+        if (gone(tile->room(slot).state) || !tile->move_to(slot)) return;
+        tile->focus(slot);
+        show(View::NOW);
         return;
       }
       if (!inside(take_, p)) return;
@@ -1209,7 +1240,7 @@ class MusicCard : public tessera::Card {
     const int head_w = std::max<int>(1, now ? width_ - static_cast<int>(lv_obj_get_width(library_)) -
                                                   static_cast<int>(lv_obj_get_width(everywhere_key_)) - 2 * gap_
                                        : row ? width_ - play_w_ - find_w_ - open_w_ - 3 * gap_
-                                       : taking ? width_ - take_w_ - gap_ : width_);
+                                       : taking ? width_ - take_w_ - gap_ - (move_ ? move_w_ + gap_ : 0) : width_);
     lv_obj_set_width(head_, head_w);
     set_icon(head_icon_, tile.room_count() > 1 ? ICON_ROOMS : ICON_SPEAKER);
     lv_obj_set_pos(head_icon_, pad, (key_ - ui::line_height(Font::ICON_SMALL)) / 2);
@@ -1261,6 +1292,7 @@ class MusicCard : public tessera::Card {
     if (view_ != View::PLAYING || !tile) {
       hide(rooms_wheel_, true);
       hide(take_, true);
+      hide(move_, true);
       for (lv_obj_t *o : {room_down_, room_up_, room_volume_}) hide(o, true);
     }
     if (view_ != View::SEARCH || !tile) {
@@ -1388,6 +1420,13 @@ class MusicCard : public tessera::Card {
       // The middle room's volume between its keys: "Stereo 35 %".
       for (lv_obj_t *o : {room_down_, room_up_, room_volume_}) hide(o, entries_ == 0);
       const uint32_t middle = lv_roller_get_selected(rooms_wheel_);
+      {
+        const Room &from = tile.room(lead);
+        const bool on = !strcmp(from.state, "playing") || !strcmp(from.state, "paused") || !strcmp(from.state, "buffering");
+        const bool other = static_cast<int>(middle) < entries_ && playing_slots_[middle] != lead &&
+                           !gone(tile.room(playing_slots_[middle]).state);
+        hide(move_, !(plugin_->join_script()[0] && on && other));
+      }
       if (static_cast<int>(middle) < entries_) {
         const Room &r = tile.room(playing_slots_[middle]);
         char words[16] = "";
@@ -2004,8 +2043,8 @@ class MusicCard : public tessera::Card {
   bool searching_ = false, everywhere_ = false;
   int total_ = 0, play_w_ = 0, find_w_ = 0, open_w_ = 0;
   lv_obj_t *open_{}, *open_text_{}, *everywhere_key_{}, *everywhere_text_{};
-  lv_obj_t *rooms_wheel_{}, *take_{}, *take_text_{};
-  int take_w_ = 0, playing_slots_[SLOTS] = {};
+  lv_obj_t *rooms_wheel_{}, *take_{}, *take_text_{}, *move_{}, *move_text_{};
+  int take_w_ = 0, move_w_ = 0, playing_slots_[SLOTS] = {};
   bool start_playing_ = false;
   std::string playing_lines_;
   uint8_t opened_ = CLOSED;

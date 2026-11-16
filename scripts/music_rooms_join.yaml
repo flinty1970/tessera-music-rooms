@@ -10,12 +10,13 @@
 #
 # Add it in Home Assistant as a script with the id music_rooms_join (Settings, Automations & scenes, Scripts, Add
 # script, Edit in YAML, paste this), then give each screen `join_script: script.music_rooms_join` under `music_rooms:`.
+# - With move: true (the screen's Move here), what plays moves to the first of members alone.
 alias: Music rooms – join rooms
 description: 'Adds rooms to what a player plays: a room that can group with it (a Cast or Sonos speaker) joins the group through
   its lead (the first of group_members); a Music Assistant group player (Whole House) takes the music over; a room of the
   playing Music Assistant group that already plays is left as it is. A room that cannot play in step with it (a screen''s
   own speaker, or any room while a screen''s speaker plays) gets the music moved to it (music_assistant.transfer_queue), and
-  the other ticked rooms that can group join it there.'
+  the other ticked rooms that can group join it there. With move, what plays moves to the first of members alone (music_assistant.transfer_queue).'
 fields:
   members:
     description: The rooms to add.
@@ -28,6 +29,10 @@ fields:
     selector:
       entity:
         domain: media_player
+  move:
+    description: Move the music to the first of members alone instead of adding them.
+    selector:
+      boolean: {}
 max: 20
 mode: queued
 sequence:
@@ -41,6 +46,34 @@ sequence:
     player_group: '{{ is_state_attr(owner, ''mass_player_type'', ''group'') }}'
 - variables:
     lead: '{{ owner if player_group else (group[0] if group | length > 1 else player) }}'
+- if:
+  - condition: template
+    value_template: '{{ move | default(false) | bool }}'
+  then:
+  - variables:
+      to: '{{ (members if members is list else [members]) | first }}'
+  - if:
+    - condition: template
+      value_template: '{{ to != lead and states(lead) in [''playing'', ''paused'', ''buffering''] }}'
+    then:
+    - if:
+      - condition: template
+        value_template: '{{ not player_group and to in group }}'
+      then:
+      - action: media_player.unjoin
+        continue_on_error: true
+        target:
+          entity_id: '{{ to }}'
+      - delay:
+          seconds: 1
+    - action: music_assistant.transfer_queue
+      continue_on_error: true
+      data:
+        auto_play: true
+        source_player: '{{ lead }}'
+      target:
+        entity_id: '{{ to }}'
+  - stop: Moved.
 - variables:
     asked: '{{ (members if members is list else [members]) | reject(''eq'', lead) | reject(''eq'', player) | reject(''eq'',
       owner) | list }}'

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.1
+
+- **Move here** in Playing, beside Control: what plays (the room you control, its group, or Whole House) moves to the
+  room in the middle of the wheel, alone, and the keys then act on it. From Whole House to the Google Home in one tap.
+  Needs the updated join script (`scripts/music_rooms_join.yaml`).
+- "Did not start" no longer stays on Now playing when the room starts late: it goes as soon as the room plays, and
+  waits 30 seconds instead of 15.
+
 ## 0.13.0
 
 - **Switching between a screen's speaker and another room works**: a room that cannot play in step with the one that

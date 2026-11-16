@@ -51,7 +51,8 @@
     "cannot_join_body": "{room} can't play together with {lead}, and Home Assistant has no join script to move the music. Only speakers that can group (Google and Cast speakers, AirPlay) play in step; a screen's own speaker plays on its own.",
     "moves_here": "Moves here",
     "moved_title": "Moved to {room}",
-    "moved_body": "{room} can't play in step with {lead} (a screen's own speaker plays on its own), so the music moved to {room} instead. Tap {lead} to move it back."
+    "moved_body": "{room} can't play in step with {lead} (a screen's own speaker plays on its own), so the music moved to {room} instead. Tap {lead} to move it back.",
+    "move_here": "Move here"
   },
   "app": {
     "name": "Music rooms",

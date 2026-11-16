@@ -3,12 +3,13 @@
 #   otherwise the lead of its group (the first of group_members).
 # - Remove takes a room out of the group; Remove on the lead hands the music to the first room left (transfer_queue)
 #   and joins the others to it, and the dashboard then controls that room.
-# - A room that cannot play in step (a screen's own speaker, on either side) gets the music moved to it (Move here).
+# - A room that cannot play in step (a screen's own speaker, on either side) says Can't add; Move moves the music.
 alias: Music dashboard – add or remove a room
 description: Add or Remove on a room of the music dashboard. A room joins the group the controlled room plays in (through
   its lead, or the Music Assistant group player such as Whole House when that is what plays); a room in the group leaves it.
-  Removing the lead hands the music to the first room left and keeps the others with it. A room that cannot play in step gets
-  the music moved to it. A Music Assistant group player takes the music over. The dashboard then controls the room that plays.
+  Removing the lead hands the music to the first room left and keeps the others with it. A room that cannot play in step is
+  not added (its button says Can't add; Move moves the music there). A Music Assistant group player takes the music over.
+  The dashboard then controls the room that plays.
 fields:
   room:
     description: The media player to add or take out.
@@ -145,16 +146,10 @@ sequence:
       target:
         entity_id: '{{ lead }}'
   default:
-  - action: music_assistant.transfer_queue
-    alias: 'It cannot play in step: the music moves to it'
-    continue_on_error: true
+  - alias: 'It cannot play in step: say so (Move moves the music)'
+    action: persistent_notification.create
     data:
-      auto_play: true
-      source_player: '{{ lead }}'
-    target:
-      entity_id: '{{ room }}'
-  - action: input_select.select_option
-    data:
-      option: '{{ room }}'
-    target:
-      entity_id: input_select.music_dashboard_room
+      notification_id: music_rooms_cannot_add
+      title: '{{ state_attr(room, ''friendly_name'') or room }} can''t be added'
+      message: '{{ state_attr(room, ''friendly_name'') or room }} can''t play in step with {{ state_attr(lead, ''friendly_name'')
+        or lead }}: a screen''s own speaker plays on its own. Use Move to play there instead.'

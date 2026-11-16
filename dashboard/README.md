@@ -31,7 +31,10 @@ with one colour, and the library and search of Music Assistant (also Spotify) th
   **Controlling** (blue). The lead of a group has Remove too: the music then goes on in the rooms left.
 - While Whole House (a Music Assistant group) plays, its rooms say Remove and others Add; the dashboard treats Whole
   House as the room in charge even when you control one of its rooms.
-- A room that cannot play in step with the controlled room (a screen's own speaker, on either side) says **Move here**
-  (amber): a tap moves the music to it (`music_assistant.transfer_queue`) and the dashboard then controls it.
+- **Move** (purple) on every room moves what plays (the controlled room, its group, or Whole House) to that room
+  alone, and the dashboard then controls it: from Whole House to the Google Home in one tap. The room that plays says
+  Here. A room that cannot play in step with what plays (a screen's own speaker) says **Can't add** (grey) instead of
+  Add; Move still takes the music there. Add the script in `music_dashboard_move_room.yaml` with the id
+  `music_dashboard_move_room`.
 - Rooms playing together share a coloured stripe at their left, and say "With <the lead>".
 - In the library, a tap on a tile plays it; › opens an artist (their albums) or an album (its songs).
