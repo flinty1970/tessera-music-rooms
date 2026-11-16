@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.3
+
+- **This room or all rooms**: a tap on the volume between − and + switches the keys between the room they act on and
+  all the rooms it plays in ("All 35 %"), each stepped from its own level so their balance stays.
+
 ## 0.12.2
 
 - Rooms join a group through its lead, also when the room the screen controls is a member of another room's group

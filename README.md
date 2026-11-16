@@ -63,7 +63,8 @@ volume, the groups in colour, and the library and search. See `dashboard/README.
 
 - A tap on the tile opens its card on **Now playing**: the rooms, what plays there, the artist and the album, the
   song's bar (how far, how long), shuffle and repeat, the cover of the tile's
-  own player, play and pause, previous, next and the volume.
+  own player, play and pause, previous, next and the volume. A tap on the volume number switches its keys between
+  the room they act on and all the rooms it plays in ("All 35 %"), each from its own level.
 - **Playing**, beside Library, lists every room of the tile with what it plays, those that play first. A tap on a room
   takes it over: Now playing and its keys are that room's and the next item plays there, while the other rooms go on
   with their own music. Under the wheel, the volume of the room in the middle, each room its own. Each room keeps its own queue in Music Assistant, so one room can play one Spotify account,

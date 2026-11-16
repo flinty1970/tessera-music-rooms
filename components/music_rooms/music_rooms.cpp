@@ -353,6 +353,15 @@ class Players : public tessera::InPsram {
       tessera::action(next ? "media_player.media_next_track" : "media_player.media_previous_track", lead.id);
     soon(rooms_[lead_slot()]);
   }
+  // The volume keys of Now playing: the room the keys act on, or with all_volume every room it plays in, each from its
+  // own level so their balance stays.
+  bool all_volume() const { return all_volume_; }
+  void toggle_all_volume() { all_volume_ = !all_volume_; }
+  void step_volume_keys(int by) {
+    if (!all_volume_) { step_volume(by); return; }
+    for (int i = 0; i < SLOTS; ++i)
+      if ((chosen() & (1u << i)) && rooms_[i].used()) step_volume(by, i);
+  }
   void step_volume(int by, int slot = -1) {
     Room &lead = rooms_[slot < 0 ? lead_slot() : slot];
     if (!lead.used() || gone(lead.state) || lead.volume < 0) return;
@@ -491,7 +500,7 @@ class Players : public tessera::InPsram {
   char library_[49] = "";
   char open_on_[16] = "kinds";
   char started_title_[49] = "", started_state_[16] = "";
-  bool several_ = false;
+  bool several_ = false, all_volume_ = false;
   uint32_t started_at_ = 0;
   Note note_ = Note::NONE;
 };
@@ -637,7 +646,7 @@ class MusicCard : public tessera::Card {
     key_ = std::max(ui::mm(10), ui::line_height(Font::BODY_LARGE) + ui::px(12));
     // The keys of Now playing: previous, play, next, shuffle, repeat, and the volume between its two keys, in a row as
     // large as the width allows, never smaller than a finger.
-    const int volume_w = ui::text_width("100 %", Font::BODY_LARGE) + ui::px(8);
+    const int volume_w = ui::text_width(tessera::fill(plugin_->text("volume_all"), "n", "100").c_str(), Font::BODY_LARGE) + ui::px(8);
     round_ = std::max(ui::mm(7), std::min(key_, (width_ - volume_w - 8 * gap_) / 7));
 
     // The head: on Now playing the rooms key and the library key; in the lists the rooms it plays in.
@@ -981,8 +990,10 @@ class MusicCard : public tessera::Card {
       else if (inside(keys_[2], p)) tile->step_track(true);
       else if (inside(keys_[3], p)) tile->toggle_shuffle();
       else if (inside(keys_[4], p)) tile->step_repeat();
-      else if (inside(keys_[5], p)) tile->step_volume(-5);
-      else if (inside(keys_[7], p)) tile->step_volume(5);
+      else if (inside(keys_[5], p)) tile->step_volume_keys(-5);
+      else if (inside(keys_[7], p)) tile->step_volume_keys(5);
+      // A tap on the volume switches the keys between this room and all its rooms.
+      else if (inside(volume_, p)) tile->toggle_all_volume();
       paint();
       return;
     }
@@ -1265,7 +1276,8 @@ class MusicCard : public tessera::Card {
     set_icon(key_icon_[1], playing ? ICON_PAUSE : ICON_PLAY);
     char words[16] = "";
     if (lead.volume >= 0) snprintf(words, sizeof(words), "%d", lead.volume);
-    ui::set_text(volume_, lead.volume >= 0 ? tessera::fill(plugin_->text("volume"), "n", words) : std::string("-"));
+    ui::set_text(volume_, lead.volume >= 0 ? tessera::fill(plugin_->text(tile.all_volume() ? "volume_all" : "volume"), "n", words)
+                                           : std::string("-"));
     // Shuffle and repeat in the accent while on; repeat one with its own icon.
     ui::set_color(key_icon_[3], lead.shuffle == 1 ? theme::ACCENT : theme::MUTED);
     set_icon(key_icon_[4], !strcmp(lead.repeat, "one") ? ICON_REPEAT_ONE : ICON_REPEAT);
