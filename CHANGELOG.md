@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.0
+
+- **Eleven rooms** beside the tile's own player. The Music Assistant entry gave its place on the tile: it is asked once
+  when the plugin is added, for every tile of every screen (a tile that named its own keeps it).
+- The cover on more tiles: a 3 x 2 tile of a square screen shows it too, at most two fifths of the tile wide.
+- An idle player shows Nothing playing alone: no longer the artist and cover of what it played last.
+
 ## 0.9.0
 
 - **Playing**, beside Library on Now playing: every room of the tile with what it plays and who, the rooms that

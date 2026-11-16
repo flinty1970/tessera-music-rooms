@@ -15,9 +15,9 @@ FNK0104S are too small for its wheel, keyboard and keys, and the Tessera app doe
 1. Add the plugin to a screen in Tessera. The screen builds once.
 2. In Layout, place the **Music rooms** tile from the library's Plugins group, and choose its player: a Music Assistant
    player. It is the room the tile plays in until you pick another.
-3. Under **Room 1** to **Room 10**, choose the other Music Assistant players the tile may play in: speakers, or Music
+3. Under **Room 1** to **Room 11**, choose the other Music Assistant players the tile may play in: speakers, or Music
    Assistant groups (a group is one player that plays on all its speakers in sync).
-4. Under **Music Assistant entry**, fill in the ID of your Music Assistant integration. In Home Assistant open
+4. The **Music Assistant entry** is asked once, when you add the plugin: the ID of your Music Assistant integration. In Home Assistant open
    Settings, Devices & services, Music Assistant, and open its entry: the ID is the last part of the page's address.
 5. Optional: under **Source**, what the Library key opens first: all kinds, Favourites, or one kind such as Radio.
 
@@ -65,6 +65,6 @@ FNK0104S are too small for its wheel, keyboard and keys, and the Tessera app doe
 - An item whose Music Assistant address is longer than 48 characters shows faded and plays nothing: the Tessera app
   keeps no longer text for a plugin.
 - The cover on Now playing is the tile's own player's. Another room shows what plays and who, without a cover.
-- Up to ten rooms beside the tile's own player. The tile's own player is where it plays until you pick another.
+- Up to eleven rooms beside the tile's own player. The tile's own player is where it plays until you pick another.
 - A Music Assistant group ticked together with other rooms is not joined to them: each gets the item on its own, so
   they play the same thing but not exactly in step. A group ticked alone plays in sync as always.

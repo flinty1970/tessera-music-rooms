@@ -7,8 +7,8 @@ namespace esphome::music_rooms {
 class Players;
 class MusicCard;
 
-// The places a tile keeps its players in: its own (0) and its ten rooms (the options room_1 to room_10).
-constexpr int SLOTS = 11;
+// The places a tile keeps its players in: its own (0) and its eleven rooms (the options room_1 to room_11).
+constexpr int SLOTS = 12;
 // Music tiles a layout has at most. The plugin keeps what it holds of each by the tile's slot on the screen, which can
 // be any number (a screen of many pages and top bar items has slots past 80), so it is a short table, not an array.
 constexpr int TILES = 16;
@@ -35,6 +35,10 @@ class MusicRooms : public Component, public tessera::Plugin {
   // The slot of a tile of this player, -1 for none.
   int find(const char *entity) const;
 
+  // The Music Assistant entry of the screen (the input `library`), for the tiles that name none of their own.
+  void set_library(const std::string &entry) { library_ = entry; }
+  const char *library() const { return library_.c_str(); }
+
   MusicCard *card_ = nullptr;  // the card that is open, to hand it the library's answers
 
  protected:
@@ -52,6 +56,7 @@ class MusicRooms : public Component, public tessera::Plugin {
     return nullptr;
   }
   Entry entries_[TILES];
+  std::string library_;
 };
 
 }  // namespace esphome::music_rooms

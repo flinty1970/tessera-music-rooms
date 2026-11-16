@@ -88,7 +88,9 @@ class Players : public tessera::InPsram {
     // Several rooms at once, always since 0.8.0 (the setting gave its place to a tenth room); a tile saved with One
     // keeps it.
     several_ = strcmp(options["rooms_at_once"] | "several", "one") != 0;
+    // The tile's own Music Assistant entry where it has one (a tile of 0.9.0 and before), else the screen's.
     put(library_, options["library"] | "");
+    if (!library_[0]) put(library_, plugin_->library());
     put(open_on_, options["open_on"] | "kinds");
   }
 
@@ -190,9 +192,13 @@ class Players : public tessera::InPsram {
     if (note_ == Note::NOT_STARTED) return plugin_->text("not_started");
     if (note_ == Note::NOT_SENT) return plugin_->text("not_sent");
     if (gone(lead.state)) return plugin_->text("unavailable");
-    if (lead.title[0] && (!strcmp(lead.state, "playing") || !strcmp(lead.state, "paused") || !strcmp(lead.state, "buffering")))
-      return lead.title;
+    if (active(lead)) return lead.title;
     return plugin_->text("idle");
+  }
+  // Something on it: playing, paused or about to play, with a title. An idle player keeps what it last played, which is
+  // no longer what plays.
+  static bool active(const Room &r) {
+    return r.title[0] && (!strcmp(r.state, "playing") || !strcmp(r.state, "paused") || !strcmp(r.state, "buffering"));
   }
   bool noted() const { return note_ == Note::NOT_STARTED || note_ == Note::NOT_SENT; }
 
@@ -337,11 +343,14 @@ class PlayerTile : public tessera::Tile {
     const bool small = height_ < line * 3 + ui::px(8);
     // A tile with room for it shows the cover of its own player at its left, as tall as the tile.
     int text_x = 0;
-    if (ui::pictures() && !small && height_ >= ui::mm(18) && width_ >= height_ * 2 && width_ - height_ >= ui::mm(35)) {
+    // As tall as the tile where it is wide, at most two fifths of its width where it is not (a 3 x 2 tile of a square
+    // screen), always with the words' room beside it.
+    const int side = std::min(height_, width_ * 2 / 5);
+    if (ui::pictures() && !small && side >= ui::mm(18) && width_ - side >= ui::mm(30)) {
       cover_ = ui::picture(c.parent);
-      lv_obj_set_size(cover_, height_, height_);
-      lv_obj_set_pos(cover_, 0, 0);
-      text_x = height_ + ui::px(12);
+      lv_obj_set_size(cover_, side, side);
+      lv_obj_set_pos(cover_, 0, (height_ - side) / 2);
+      text_x = side + ui::px(12);
     }
     text_x_ = shifted_ = text_x;
     const int text_w = std::max(1, width_ - text_x);
@@ -379,10 +388,10 @@ class PlayerTile : public tessera::Tile {
     const Room &lead = players_->room(players_->lead_slot());
     ui::set_text(where_, players_->rooms_text());
     ui::set_text(title_, players_->now_playing());
-    ui::set_text(artist_, gone(lead.state) ? "" : lead.artist);
+    ui::set_text(artist_, Players::active(lead) ? lead.artist : "");
     if (cover_) {
       // The cover is the tile's own player's; another room's is not this tile's to show.
-      const bool own = players_->lead_slot() == 0 && !gone(lead.state) && lead.title[0];
+      const bool own = players_->lead_slot() == 0 && Players::active(lead);
       if (own) ui::set_picture(cover_, std::string("cover:") + lead.id, tessera::Fit::COVER);
       if (own) lv_obj_remove_flag(cover_, LV_OBJ_FLAG_HIDDEN);
       else lv_obj_add_flag(cover_, LV_OBJ_FLAG_HIDDEN);
@@ -991,7 +1000,7 @@ class MusicCard : public tessera::Card {
     const Room &lead = tile.room(tile.lead_slot());
     ui::set_text(title_, tile.now_playing());
     ui::set_color(title_, tile.noted() || gone(lead.state) ? theme::MUTED : theme::INK);
-    ui::set_text(artist_, gone(lead.state) ? "" : lead.artist);
+    ui::set_text(artist_, Players::active(lead) ? lead.artist : "");
     const bool playing = !strcmp(lead.state, "playing");
     set_icon(key_icon_[1], playing ? ICON_PAUSE : ICON_PLAY);
     char words[16] = "";
@@ -999,7 +1008,7 @@ class MusicCard : public tessera::Card {
     ui::set_text(volume_, lead.volume >= 0 ? tessera::fill(plugin_->text("volume"), "n", words) : std::string("-"));
     // The cover is the tile's own player's: Home Assistant's picture of another room is not this tile's to show.
     if (cover_) {
-      const bool own = tile.lead_slot() == 0 && !gone(lead.state) && lead.title[0];
+      const bool own = tile.lead_slot() == 0 && Players::active(lead);
       hide(cover_, !own);
       if (own) ui::set_picture(cover_, std::string("cover:") + lead.id, tessera::Fit::COVER);
       // Without the cover what plays and who take the card's whole width.

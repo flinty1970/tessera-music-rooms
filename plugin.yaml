@@ -1,3 +1,7 @@
 # What a screen gets when it takes this plugin: the component, configured. Tessera includes this file from the screen's
 # <name>.plugins.yaml and adds this plugin's components/ folder as an ESPHome external component.
+defaults:
+  LIBRARY: ""
 music_rooms:
+  # The Music Assistant entry, filled in once when the plugin is added (the input `library`).
+  library: "${LIBRARY}"

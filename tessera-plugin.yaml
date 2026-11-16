@@ -3,7 +3,7 @@
 # its keys. Every name, label and hint below is a key into translations/<language>.json, part "app". docs/MANIFEST.md
 # in the plugins repository has every field.
 id: music_rooms
-version: 0.9.0
+version: 0.10.0
 # 0.15: options of kind entity (the rooms); 0.17: the cover of the tile's own player by name (cover:).
 api: "0.17"
 icon: speaker-multiple
@@ -20,6 +20,10 @@ boards: [guition, waveshare43, waveshare43c, jc4880p443, waveshare4b, waveshare4
          wavesharep47, wavesharep47b, reterminald1001, jc8012p4a1, jc8012p4a1v2, jc8012p4a1v3, crowpanel101,
          waveshare101]
 flash_kb: 24
+
+# The Music Assistant entry, once for every screen: Settings, Devices & services, Music Assistant, its entry's ID.
+inputs:
+  - { id: library, kind: text, scope: all, label: library, hint: library_hint }
 
 permissions:
   # A page of the Music Assistant library: favourites, playlists, radio and the rest, a few items at a time; and a
@@ -66,7 +70,7 @@ tiles:
       - { id: room_8, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type, supported_features], label: room_8 }
       - { id: room_9, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type, supported_features], label: room_9 }
       - { id: room_10, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type, supported_features], label: room_10 }
-      - { id: library, kind: text, label: library, hint: library_hint }
+      - { id: room_11, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type, supported_features], label: room_11 }
       # The source the Library key opens: the list of kinds, the favourites, or one kind (Radio, Playlists, ...).
       - { id: open_on, kind: choice, label: open_on, hint: open_on_hint, default: kinds,
           choices: [{ value: kinds, label: open_kinds }, { value: favourites, label: open_favourites },
