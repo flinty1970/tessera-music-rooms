@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.3
+
+- Unticking a room goes through the join script, which knows the real lead of the group: unticking the lead leaves
+  the music playing in the rooms still ticked (it stayed on the lead). Needs the updated join script.
+
 ## 0.13.2
 
 - A tap on a room that says "Moves here" always moves the music, also when that room was ticked before (it

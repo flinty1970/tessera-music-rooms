@@ -229,8 +229,12 @@ class Players : public tessera::InPsram {
       const bool on = !strcmp(rooms_[i].state, "playing") || !strcmp(rooms_[i].state, "paused");
       if ((joined & (1u << i)) || (on && joinable(i))) gone_out |= 1u << i;
     }
-    for (int i = 0; i < SLOTS; ++i)
-      if (gone_out & (1u << i)) tessera::action("media_player.unjoin", rooms_[i].id);
+    // With the join script the rooms leave through Home Assistant, which knows the real lead: when the lead leaves, the
+    // music goes on in the rooms left. Without it each leaves on its own (media_player.unjoin).
+    if (gone_out && plugin_->join_script()[0]) leave(lead, gone_out);
+    else
+      for (int i = 0; i < SLOTS; ++i)
+        if (gone_out & (1u << i)) tessera::action("media_player.unjoin", rooms_[i].id);
     joined &= ~gone_out;
     uint16_t come = 0, groups = 0;
     const bool script = plugin_->join_script()[0] != '\0';
@@ -368,6 +372,17 @@ class Players : public tessera::InPsram {
     for (int i = 0; i < SLOTS; ++i) if (rooms & (1u << i)) members.add(rooms_[i].id);
     if (script[0]) return tessera::action("script.turn_on", script, data.as<JsonVariantConst>());
     return tessera::action("media_player.join", rooms_[lead].id, data.as<JsonVariantConst>());
+  }
+
+  // These rooms leave the group the first room plays in: the join script's leave.
+  bool leave(int lead, uint16_t rooms) {
+    JsonDocument data;
+    JsonObject into = data["variables"].to<JsonObject>();
+    into["player"] = rooms_[lead].id;
+    JsonArray members = into["members"].to<JsonArray>();
+    for (int i = 0; i < SLOTS; ++i) if (rooms & (1u << i)) members.add(rooms_[i].id);
+    into["leave"] = true;
+    return tessera::action("script.turn_on", plugin_->join_script(), data.as<JsonVariantConst>());
   }
 
   // What plays in the first room (its group, or the Music Assistant group it plays in) moves to this room alone: the

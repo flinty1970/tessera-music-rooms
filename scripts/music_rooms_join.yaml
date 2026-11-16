@@ -10,6 +10,8 @@
 #
 # Add it in Home Assistant as a script with the id music_rooms_join (Settings, Automations & scenes, Scripts, Add
 # script, Edit in YAML, paste this), then give each screen `join_script: script.music_rooms_join` under `music_rooms:`.
+# - With leave: true (a room unticked on the screen), the rooms leave the group; when the lead leaves, the music goes
+#   on in the rooms left (transfer_queue to the first, the others join it). A room already grouped is not joined again.
 # - With move: true (the screen's Move here), what plays moves to the first of members alone.
 alias: Music rooms – join rooms
 description: 'Adds rooms to what a player plays: a room that can group with it (a Cast or Sonos speaker) joins the group through
@@ -31,6 +33,11 @@ fields:
         domain: media_player
   move:
     description: Move the music to the first of members alone instead of adding them.
+    selector:
+      boolean: {}
+  leave:
+    description: Take members out of the group instead of adding them; when the lead leaves, the music goes on in the rooms
+      left.
     selector:
       boolean: {}
 max: 20
@@ -74,6 +81,51 @@ sequence:
       target:
         entity_id: '{{ to }}'
   - stop: Moved.
+- if:
+  - condition: template
+    value_template: '{{ leave | default(false) | bool }}'
+  then:
+  - variables:
+      leaving: '{{ members if members is list else [members] }}'
+      real_group: '{{ (state_attr(lead, ''group_members'') or []) if not player_group else group }}'
+  - variables:
+      staying: '{{ real_group | reject(''in'', leaving) | list }}'
+  - if:
+    - condition: template
+      value_template: '{{ not player_group and lead in leaving and staying | length > 0 and states(lead) in [''playing'',
+        ''paused'', ''buffering''] }}'
+    then:
+    - action: media_player.unjoin
+      continue_on_error: true
+      target:
+        entity_id: '{{ real_group | reject("eq", lead) | list }}'
+    - delay:
+        seconds: 1
+    - action: music_assistant.transfer_queue
+      continue_on_error: true
+      data:
+        auto_play: true
+        source_player: '{{ lead }}'
+      target:
+        entity_id: '{{ staying[0] }}'
+    - if:
+      - condition: template
+        value_template: '{{ staying | length > 1 }}'
+      then:
+      - delay:
+          seconds: 2
+      - action: media_player.join
+        continue_on_error: true
+        data:
+          group_members: '{{ staying[1:] }}'
+        target:
+          entity_id: '{{ staying[0] }}'
+    else:
+    - action: media_player.unjoin
+      continue_on_error: true
+      target:
+        entity_id: '{{ leaving | reject("eq", owner) | list }}'
+  - stop: Left.
 - variables:
     asked: '{{ (members if members is list else [members]) | reject(''eq'', lead) | reject(''eq'', player) | reject(''eq'',
       owner) | list }}'
@@ -83,7 +135,9 @@ sequence:
     playing_in_group: '{{ (group if player_group else []) | select(''is_state'', [''playing'', ''paused'', ''buffering''])
       | list }}'
 - variables:
-    rest: '{{ asked | reject(''in'', groups) | reject(''in'', playing_in_group) | list }}'
+    rest: '{% set together = state_attr(lead, ''group_members'') or [] %}{% set ns = namespace(out=[]) %}{% for r in asked
+      | reject(''in'', groups) | reject(''in'', playing_in_group) %}{% if r not in together and lead not in (state_attr(r,
+      ''group_members'') or []) %}{% set ns.out = ns.out + [r] %}{% endif %}{% endfor %}{{ ns.out }}'
 - variables:
     joinable: '{% set ns = namespace(out=[]) %}{% if not player_group and ((state_attr(lead, ''supported_features'') | int(0))
       // 524288) % 2 == 1 %}{% for r in rest %}{% if ((state_attr(r, ''supported_features'') | int(0)) // 524288) % 2 == 1
