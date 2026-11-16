@@ -60,6 +60,7 @@ struct Room {
   char state[16] = "";
   char title[49] = "";
   char artist[49] = "";
+  char album[49] = "";
   int volume = -1;       // 0 to 100, -1 when it has none
   bool group = false;    // a Music Assistant group (mass_player_type "group"): it plays alone, never joined to others
   bool sync = false;     // it can be put together with others in step (media_player.join): Home Assistant's GROUPING
@@ -200,6 +201,13 @@ class Players : public tessera::InPsram {
   static bool active(const Room &r) {
     return r.title[0] && (!strcmp(r.state, "playing") || !strcmp(r.state, "paused") || !strcmp(r.state, "buffering"));
   }
+  // Who and from what, under the title: the artist and the album ("The Reytons · What's Rock and Roll?"), either
+  // alone when the other is missing, nothing while nothing plays.
+  static std::string byline(const Room &r) {
+    if (!active(r)) return "";
+    if (r.artist[0] && r.album[0]) return std::string(r.artist) + " · " + r.album;
+    return std::string(r.artist[0] ? r.artist : r.album);
+  }
   bool noted() const { return note_ == Note::NOT_STARTED || note_ == Note::NOT_SENT; }
 
   // Play an item in the rooms picked: those Home Assistant cannot reach are left out; with several, the others join the
@@ -310,6 +318,7 @@ class Players : public tessera::InPsram {
     JsonObjectConst a = data["attributes"];
     put(room.title, a["media_title"] | "");
     put(room.artist, a["media_artist"] | "");
+    put(room.album, a["media_album_name"] | "");
     room.volume = a["volume_level"].is<float>() ? static_cast<int>(a["volume_level"].as<float>() * 100.0f + 0.5f) : -1;
     room.group = !strcmp(a["mass_player_type"] | "", "group");
     // MediaPlayerEntityFeature.GROUPING: Music Assistant can join it to another player (a Cast, a Sonos), where a
@@ -364,6 +373,7 @@ class PlayerTile : public tessera::Tile {
     title_ = ui::label(c.parent, face, theme::INK);
     lv_obj_set_width(title_, text_w);
     artist_ = ui::label(c.parent, Font::BODY, theme::MUTED);
+    lv_label_set_long_mode(artist_, LV_LABEL_LONG_DOT);  // a long album ends in dots, on one line
     lv_obj_set_width(artist_, text_w);
     if (small) {
       // Two lines: the room, and what plays.
@@ -388,7 +398,7 @@ class PlayerTile : public tessera::Tile {
     const Room &lead = players_->room(players_->lead_slot());
     ui::set_text(where_, players_->rooms_text());
     ui::set_text(title_, players_->now_playing());
-    ui::set_text(artist_, Players::active(lead) ? lead.artist : "");
+    ui::set_text(artist_, Players::byline(lead));
     if (cover_) {
       // The cover is the tile's own player's; another room's is not this tile's to show.
       const bool own = players_->lead_slot() == 0 && Players::active(lead);
@@ -493,6 +503,7 @@ class MusicCard : public tessera::Card {
     lv_obj_set_width(title_, std::max(1, width_ - text_x));
     lv_obj_set_height(title_, title_h);
     artist_ = ui::label(parent_, Font::BODY_LARGE, theme::MUTED);
+    lv_label_set_long_mode(artist_, LV_LABEL_LONG_DOT);  // a long album ends in dots, on one line
     lv_obj_set_width(artist_, std::max(1, width_ - text_x));
     const int text_h = title_h + gap_ + artist_h;
     const int text_y = body_y + std::max(0, (body_h - text_h) / 2);
@@ -1000,7 +1011,7 @@ class MusicCard : public tessera::Card {
     const Room &lead = tile.room(tile.lead_slot());
     ui::set_text(title_, tile.now_playing());
     ui::set_color(title_, tile.noted() || gone(lead.state) ? theme::MUTED : theme::INK);
-    ui::set_text(artist_, Players::active(lead) ? lead.artist : "");
+    ui::set_text(artist_, Players::byline(lead));
     const bool playing = !strcmp(lead.state, "playing");
     set_icon(key_icon_[1], playing ? ICON_PAUSE : ICON_PLAY);
     char words[16] = "";

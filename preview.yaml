@@ -24,6 +24,7 @@ states:
       mass_player_type: player
       media_title: Morning Light
       media_artist: Nova Coast
+      media_album_name: Long Way Home
       volume_level: 0.35
   media_player.bedroom:
     state: idle

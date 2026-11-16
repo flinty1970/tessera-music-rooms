@@ -23,7 +23,7 @@ FNK0104S are too small for its wheel, keyboard and keys, and the Tessera app doe
 
 ## On the screen
 
-- A tap on the tile opens its card on **Now playing**: the rooms, what plays there and who, the cover of the tile's
+- A tap on the tile opens its card on **Now playing**: the rooms, what plays there, the artist and the album, the cover of the tile's
   own player, play and pause, previous, next and the volume.
 - **Playing**, beside Library, lists every room of the tile with what it plays, those that play first. A tap on a room
   takes it over: Now playing and its keys are that room's and the next item plays there, while the other rooms go on

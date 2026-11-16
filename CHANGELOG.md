@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.0
+
+- **The album** beside the artist, under what plays: on the tile and on Now playing ("The Reytons · What's Rock and
+  Roll?"). A long one ends in dots.
+
 ## 0.10.0
 
 - **Eleven rooms** beside the tile's own player. The Music Assistant entry gave its place on the tile: it is asked once
