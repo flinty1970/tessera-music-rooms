@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.5
+
+- **All rooms** is gone from Rooms: it overlapped Whole House. For every speaker at once, play on a Music Assistant
+  group such as Whole House.
+
 ## 0.13.4
 
 - While Whole House (a Music Assistant group) plays and the keys act on it, Rooms ticks the speakers that play in it:

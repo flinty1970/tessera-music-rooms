@@ -5,7 +5,6 @@
   "screen": {
     "choose_player": "Choose a player",
     "rooms": "Rooms",
-    "all_rooms": "All rooms",
     "plays_in": "Plays in {rooms}",
     "more_rooms": "{room} + {n}",
     "library": "Library",

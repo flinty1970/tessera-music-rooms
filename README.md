@@ -71,8 +71,8 @@ volume, the groups in colour, and the library and search. See `dashboard/README.
   the room in the middle, alone: from Whole House to the Google Home in one tap (with the join script). Under the
   wheel, the volume of the room in the middle, each room its own. Each room keeps its own queue in Music Assistant, so one room can play one Spotify account,
   another the other account and a third the radio.
-- The rooms key at the top opens **Rooms**: a tap adds a room or takes it out, and **All rooms** picks every room that
-  can play with the one that plays. A room Home Assistant cannot reach is marked Unavailable.
+- The rooms key at the top opens **Rooms**: a tap adds a room or takes it out. For every speaker at once, use a Music
+  Assistant group such as Whole House. A room Home Assistant cannot reach is marked Unavailable.
 - Only rooms that can play in step are grouped. While a room plays, a room that cannot play in step with it (a
   screen's own speaker, on either side) says **Moves here**: a tap moves the music to it (with the join script,
   `music_assistant.transfer_queue`) and a popup says why it moved instead of joining; the keys then act on that room.

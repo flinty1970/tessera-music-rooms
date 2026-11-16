@@ -258,7 +258,6 @@ class Players : public tessera::InPsram {
     const uint16_t picked = chosen();
     const int count = __builtin_popcount(picked);
     const Room &lead = rooms_[lead_slot()];
-    if (count > 1 && picked == used_mask()) return plugin_->text("all_rooms");
     if (count > 1)
       return tessera::fill(tessera::fill(plugin_->text("more_rooms"), "room", lead.name).c_str(), "n", std::to_string(count - 1));
     return lead.name;
@@ -1494,10 +1493,9 @@ class MusicCard : public tessera::Card {
   }
 
   void paint_rooms(Players &tile) {
-    // With several at once, All rooms first; then every room, ticked when it plays the next item.
+    // Every room, ticked when it plays the next item.
     entries_ = 0;
-    int listed[SLOTS + 1];
-    if (tile.several() && tile.room_count() > 1) listed[entries_++] = -1;
+    int listed[SLOTS];
     for (int i = 0; i < SLOTS; ++i) if (tile.room(i).used()) listed[entries_++] = i;
     const int first = page_no_ * rows_;
     const uint16_t picked = tile.chosen();
@@ -1505,10 +1503,6 @@ class MusicCard : public tessera::Card {
       const int at = first + i;
       if (at >= entries_) { hide(row_[i].box, true); continue; }
       row_entry_[i] = listed[at];
-      if (listed[at] < 0) {
-        row(i, ICON_ROOMS, plugin_->text("all_rooms"), "", picked == tile.used_mask());
-        continue;
-      }
       const Room &r = tile.room(listed[at]);
       if (tile.group_playing() && listed[at] != tile.lead_slot() && !r.group) {
         // Whole House plays: its speakers that play are ticked; a tap takes one out or puts one in.
@@ -1674,16 +1668,7 @@ class MusicCard : public tessera::Card {
     }
     if (view_ == View::ROOMS) {
       const int slot = row_entry_[i];
-      if (slot < 0) {
-        // All rooms: every room that can play in step with the one the keys act on.
-        uint16_t all = 1u << tile.lead_slot();
-        for (int s = 0; s < SLOTS; ++s)
-          if (tile.room(s).used() && tile.can_add(s) == Players::Add::YES) all |= 1u << s;
-        tile.choose(all);
-        paint();
-        return;
-      }
-      if (gone(tile.room(slot).state)) return;
+      if (slot < 0 || gone(tile.room(slot).state)) return;
       if (tile.group_playing() && slot != tile.lead_slot() && !tile.room(slot).group) {
         tile.toggle_in_group(slot);
         paint();
