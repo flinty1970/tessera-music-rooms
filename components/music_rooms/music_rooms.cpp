@@ -183,6 +183,22 @@ class Players : public tessera::InPsram {
     note_ = Note::NONE;
   }
 
+  // Whether a room can be ticked to play with the rooms ticked now: always out again; in when it can play in step with
+  // the room the keys act on (both can be grouped: Cast, AirPlay), or when it is a Music Assistant group (it takes the
+  // music over), or when nothing plays in a room that cannot be grouped (the room is then switched, not added).
+  // A screen's own speaker cannot play along with a group, and a second stream of one Spotify account is refused.
+  enum class Add : uint8_t { YES, SWITCH, NO };
+  Add can_add(int slot) const {
+    if (chosen() & (1u << slot)) return Add::YES;
+    const Room &r = rooms_[slot];
+    const Room &lead = rooms_[lead_slot()];
+    const bool on = !strcmp(lead.state, "playing") || !strcmp(lead.state, "paused") || !strcmp(lead.state, "buffering");
+    if (r.group) return Add::SWITCH;
+    if (joinable(lead_slot()) && r.sync) return Add::YES;
+    if (!on) return Add::SWITCH;
+    return Add::NO;
+  }
+
   void choose(uint16_t rooms) {
     const uint16_t before = chosen();
     rooms &= used_mask();
@@ -1418,8 +1434,10 @@ class MusicCard : public tessera::Card {
         continue;
       }
       const Room &r = tile.room(listed[at]);
-      row(i, ICON_SPEAKER, r.name, gone(r.state) ? plugin_->text("unavailable") : "", (picked >> listed[at]) & 1,
-          gone(r.state));
+      const bool cannot = tile.can_add(listed[at]) == Players::Add::NO;
+      row(i, ICON_SPEAKER, r.name,
+          gone(r.state) ? plugin_->text("unavailable") : cannot ? plugin_->text("cannot_join") : "",
+          (picked >> listed[at]) & 1, gone(r.state) || cannot);
     }
     pager(entries_);
   }
@@ -1570,8 +1588,28 @@ class MusicCard : public tessera::Card {
     }
     if (view_ == View::ROOMS) {
       const int slot = row_entry_[i];
-      if (slot < 0) { tile.choose(tile.used_mask()); paint(); return; }
+      if (slot < 0) {
+        // All rooms: every room that can play in step with the one the keys act on.
+        uint16_t all = 1u << tile.lead_slot();
+        for (int s = 0; s < SLOTS; ++s)
+          if (tile.room(s).used() && tile.can_add(s) == Players::Add::YES) all |= 1u << s;
+        tile.choose(all);
+        paint();
+        return;
+      }
       if (gone(tile.room(slot).state)) return;
+      const Players::Add add = tile.can_add(slot);
+      if (add == Players::Add::NO) {
+        plugin_->explain(tile.room(slot).name, tile.room(tile.lead_slot()).name);
+        return;
+      }
+      if (add == Players::Add::SWITCH) {
+        // A Music Assistant group, or a room while nothing plays in one that cannot be grouped: this room instead.
+        tile.choose(tile.chosen() | (1u << slot));
+        if (!tile.room(slot).group || !tile.room(tile.lead_slot()).used()) tile.focus(slot);
+        paint();
+        return;
+      }
       if (!tile.several()) {
         // One room at a time: this one, and back to Now playing.
         tile.choose(1u << slot);
@@ -1958,6 +1996,40 @@ class MusicCard : public tessera::Card {
   bool from_artist_ = false;
   char open_artist_[49] = "", open_album_[49] = "", open_uri_[49] = "";
 };
+
+// ---- A popup: a room that cannot play together with what plays ----
+class CannotJoin : public tessera::Popup {
+ public:
+  CannotJoin(MusicRooms *plugin, const char *room, const char *lead) : plugin_(plugin) {
+    put(room_, room);
+    put(lead_, lead);
+  }
+  void open(const tessera::PopupContext &c) override {
+    const int gap = ui::px(10);
+    icon_ = ui::label(c.parent, Font::ICON, theme::MUTED);
+    ui::set_text(icon_, ui::icon(ICON_SPEAKER));
+    lv_obj_set_pos(icon_, 0, 0);
+    title_ = ui::text(c.parent, Font::TITLE, theme::INK);
+    lv_obj_set_width(title_, std::max(1, c.width - c.key - gap - c.corner));
+    lv_obj_set_pos(title_, c.key + gap, 0);
+    ui::set_text(title_, tessera::fill(plugin_->text("cannot_join_title"), "room", room_));
+    body_ = ui::text(c.parent, Font::BODY_LARGE, theme::MUTED);
+    lv_obj_set_width(body_, c.width);
+    lv_obj_set_pos(body_, 0, std::max(c.key, ui::line_height(Font::TITLE) * 2) + gap);
+    ui::set_text(body_, tessera::fill(tessera::fill(plugin_->text("cannot_join_body"), "room", room_).c_str(), "lead", lead_));
+  }
+  void on_tap() override { tessera::close_popup(plugin_); }
+
+ private:
+  MusicRooms *plugin_;
+  char room_[49] = "", lead_[49] = "";
+  lv_obj_t *icon_{}, *title_{}, *body_{};
+};
+
+void MusicRooms::explain(const char *room, const char *lead) {
+  std::string r = room, l = lead;
+  tessera::show_popup(this, [this, r, l]() { return new CannotJoin(this, r.c_str(), l.c_str()); });
+}
 
 // ---- The plugin ----
 

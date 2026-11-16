@@ -29,5 +29,9 @@ with one colour, and the library and search of Music Assistant (also Spotify) th
 - Tap a room to control it: Now playing, its keys and the library then act on that room.
 - **Add** (green) joins a room to the controlled room's group, **Remove** (red) takes it out; the controlled room shows
   **Controlling** (blue).
+- Only rooms that can play in step are grouped. A room that cannot join what the controlled room plays (a screen's own
+  speaker, or any room while the controlled room cannot group) shows a grey, dashed **Can't join**; a tap on it puts a
+  notification in Home Assistant's notifications that says why. While nothing plays, a tap makes it the controlled
+  room instead.
 - Rooms playing together share a coloured stripe at their left, and say "With <the lead>".
 - In the library, a tap on a tile plays it; › opens an artist (their albums) or an album (its songs).

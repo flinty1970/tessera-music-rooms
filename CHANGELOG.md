@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.0
+
+- **Rooms that cannot play along are greyed** in Rooms ("Can't join"): a screen's own speaker, while a group of Google
+  and Cast speakers plays. A tap on one says why, in a popup.
+- A tap on a room while nothing plays in a speaker that cannot be grouped switches to that room, instead of adding
+  one that could never play with it. **All rooms** ticks only the rooms that can play together.
+- Needs Tessera's plugin API 0.18 (popups).
+
 ## 0.12.5
 
 - With the join script, every room ticked while music plays goes to Home Assistant, which knows the groups: a Cast

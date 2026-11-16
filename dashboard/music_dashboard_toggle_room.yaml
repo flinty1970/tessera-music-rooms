@@ -1,50 +1,81 @@
 # Music rooms dashboard: Add and Remove on a room's row. Joins the room to the group of the room the dashboard controls
 # (through that group's lead: Music Assistant ignores a join to a member), or takes it out when it is already in.
 # Add it as a script with the id music_dashboard_toggle_room.
+# A room that cannot be grouped with the controlled room (a screen's own speaker) is not added: the dashboard greys
+# its button (Can't join) and a tap explains why in a notification.
 alias: Music dashboard – add or remove a room
-description: Joins a room to the group of the room the music dashboard controls, or takes it out again.
-mode: queued
+description: Joins a room to the group of the room the music dashboard controls (to that group's lead), or takes it out again
+  when it is already in. Only rooms that can be grouped join; a room that cannot is explained in a notification (or, while
+  nothing plays, becomes the controlled room). A Music Assistant group player (Whole House) takes over what plays instead,
+  and the dashboard then controls it.
 fields:
   room:
     description: The media player to add or take out.
     selector:
       entity:
         domain: media_player
+mode: queued
 sequence:
-  - variables:
-      chosen: "{{ states('input_select.music_dashboard_room') }}"
-      group: "{{ state_attr(states('input_select.music_dashboard_room'), 'group_members') or [] }}"
-      lead: "{{ group[0] if group | length > 1 else chosen }}"
-      is_group: "{{ is_state_attr(room, 'mass_player_type', 'group') }}"
-  - condition: template
-    value_template: "{{ room != chosen and room != lead }}"
+- variables:
+    chosen: '{{ states(''input_select.music_dashboard_room'') }}'
+    group: '{{ state_attr(states(''input_select.music_dashboard_room''), ''group_members'') or [] }}'
+    is_group: '{{ is_state_attr(room, ''mass_player_type'', ''group'') }}'
+    lead: '{{ group[0] if group | length > 1 else chosen }}'
+    groupable: '{{ ((state_attr(room, ''supported_features'') | int(0)) // 524288) % 2 == 1 and ((state_attr(lead, ''supported_features'')
+      | int(0)) // 524288) % 2 == 1 and not is_state_attr(lead, ''mass_player_type'', ''group'') }}'
+    lead_on: '{{ states(lead) in [''playing'', ''paused'', ''buffering''] }}'
+- condition: template
+  value_template: '{{ room != chosen and room != lead }}'
+- choose:
+  - conditions:
+    - condition: template
+      value_template: '{{ is_group }}'
+    sequence:
+    - action: music_assistant.transfer_queue
+      data:
+        auto_play: true
+        source_player: '{{ lead }}'
+      target:
+        entity_id: '{{ room }}'
+    - action: input_select.select_option
+      data:
+        option: '{{ room }}'
+      target:
+        entity_id: input_select.music_dashboard_room
+  - conditions:
+    - condition: template
+      value_template: '{{ room in group }}'
+    sequence:
+    - action: media_player.unjoin
+      target:
+        entity_id: '{{ room }}'
+  default:
   - choose:
-      # A Music Assistant group player (Whole House) takes over what plays, and the dashboard then controls it.
-      - conditions:
-          - condition: template
-            value_template: "{{ is_group }}"
-        sequence:
-          - action: music_assistant.transfer_queue
-            target:
-              entity_id: "{{ room }}"
-            data:
-              source_player: "{{ lead }}"
-              auto_play: true
-          - action: input_select.select_option
-            target:
-              entity_id: input_select.music_dashboard_room
-            data:
-              option: "{{ room }}"
-      - conditions:
-          - condition: template
-            value_template: "{{ room in group }}"
-        sequence:
-          - action: media_player.unjoin
-            target:
-              entity_id: "{{ room }}"
-    default:
+    - conditions:
+      - condition: template
+        value_template: '{{ groupable }}'
+      sequence:
       - action: media_player.join
-        target:
-          entity_id: "{{ lead }}"
         data:
-          group_members: ["{{ room }}"]
+          group_members:
+          - '{{ room }}'
+        target:
+          entity_id: '{{ lead }}'
+    - conditions:
+      - condition: template
+        value_template: '{{ not lead_on }}'
+      sequence:
+      - action: input_select.select_option
+        data:
+          option: '{{ room }}'
+        target:
+          entity_id: input_select.music_dashboard_room
+    default:
+    - action: persistent_notification.create
+      data:
+        notification_id: music_rooms_cannot_join
+        title: '{{ state_attr(room, ''friendly_name'') or room }} can''t join'
+        message: '{{ state_attr(room, ''friendly_name'') or room }} can''t play in step with {{ state_attr(lead, ''friendly_name'')
+          or lead }}: only speakers that can be grouped (Cast, Sonos) play together. A screen''s own speaker can''t join a
+          group, and a Spotify account plays one stream at a time, so it can''t play the same thing apart either. Pick it
+          as the room to control instead, or stop the music first.'

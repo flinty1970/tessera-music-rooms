@@ -1,23 +1,30 @@
-# Music rooms: join rooms to the group a player is in. Music Assistant ignores a join to a player that is a member of
-# another player's group, and the screen cannot tell which one leads (a tile's data has no room for every group), so
-# the screen asks this script: it joins the rooms to the lead of the player's group (the first of its group_members),
-# or to the player itself when it plays alone. A Music Assistant group player among them (Whole House) cannot be
-# joined: what plays moves to it instead (music_assistant.transfer_queue).
+# Music rooms: add rooms to what a player plays, only where they can play together.
+#
+# - A room that can group (Home Assistant's grouping: a Cast, a Sonos) joins the lead of the player's group (the first
+#   of its group_members): Music Assistant ignores a join to a player that is a member of another player's group.
+# - A Music Assistant group player (Whole House) cannot be joined: what plays moves to it instead
+#   (music_assistant.transfer_queue).
+# - A room of the playing Music Assistant group that already plays is left as it is.
+# - A room that cannot group (a screen's own speaker) is not added: the screen greys it out and says why. (Starting the
+#   same item on it apart is no help: a Spotify account that allows one stream at a time stops on one of them.)
 #
 # Add it in Home Assistant as a script with the id music_rooms_join (Settings, Automations & scenes, Scripts, Add
 # script, Edit in YAML, paste this), then give each screen `join_script: script.music_rooms_join` under `music_rooms:`.
 alias: Music rooms – join rooms
-description: Joins rooms to the lead of the group a player is in.
+description: >-
+  Adds rooms to what a player plays, only where they can play together: a room that can group joins the group through
+  its lead (the first of group_members); a Music Assistant group player (Whole House) takes the music over; a room of
+  the playing Music Assistant group that already plays is left as it is. A room that cannot group is not added.
 mode: queued
 max: 20
 fields:
   player:
-    description: A player of the group to join (its lead or a member).
+    description: The room that plays (its lead, a member, or a Music Assistant group player).
     selector:
       entity:
         domain: media_player
   members:
-    description: The rooms to join to it.
+    description: The rooms to add.
     selector:
       entity:
         domain: media_player
@@ -25,11 +32,21 @@ fields:
 sequence:
   - variables:
       group: "{{ state_attr(player, 'group_members') or [] }}"
-      lead: "{{ group[0] if group | length > 1 else player }}"
-      asked: "{{ (members if members is list else [members]) | reject('eq', lead) | list }}"
-      # A Music Assistant group player (Whole House) cannot be joined: what plays moves to it instead.
+      player_group: "{{ is_state_attr(player, 'mass_player_type', 'group') }}"
+  - variables:
+      lead: "{{ player if player_group else (group[0] if group | length > 1 else player) }}"
+  - variables:
+      asked: "{{ (members if members is list else [members]) | reject('eq', lead) | reject('eq', player) | list }}"
+  - variables:
       groups: "{{ asked | select('is_state_attr', 'mass_player_type', 'group') | list }}"
-      rooms: "{{ asked | reject('in', groups) | list }}"
+  - variables:
+      playing_in_group: "{{ (group if player_group else []) | select('is_state', ['playing', 'paused', 'buffering']) | list }}"
+  - variables:
+      rest: "{{ asked | reject('in', groups) | reject('in', playing_in_group) | list }}"
+  # 524288 is MediaPlayerEntityFeature.GROUPING: both the lead and the room must have it.
+  - variables:
+      joinable: >-
+        {% set ns = namespace(out=[]) %}{% if not player_group and ((state_attr(lead, 'supported_features') | int(0)) // 524288) % 2 == 1 %}{% for r in rest %}{% if ((state_attr(r, 'supported_features') | int(0)) // 524288) % 2 == 1 %}{% set ns.out = ns.out + [r] %}{% endif %}{% endfor %}{% endif %}{{ ns.out }}
   - repeat:
       for_each: "{{ groups }}"
       sequence:
@@ -42,10 +59,11 @@ sequence:
           continue_on_error: true
   - if:
       - condition: template
-        value_template: "{{ rooms | length > 0 }}"
+        value_template: "{{ joinable | length > 0 }}"
     then:
       - action: media_player.join
         target:
           entity_id: "{{ lead }}"
         data:
-          group_members: "{{ rooms }}"
+          group_members: "{{ joinable }}"
+        continue_on_error: true
