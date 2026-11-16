@@ -8,17 +8,13 @@ library and play what you tap there, with Now playing, play and pause, skip and 
 1. Add the plugin to a screen in Tessera. The screen builds once.
 2. In Layout, place the **Music rooms** tile from the library's Plugins group, and choose its player: a Music Assistant
    player. It is the room the tile plays in until you pick another.
-3. Under **Room 1** to **Room 6**, choose the other Music Assistant players the tile may play in.
+3. Under **Room 1** to **Room 9**, choose the other Music Assistant players the tile may play in: speakers, or Music
+   Assistant groups (a group is one player that plays on all its speakers in sync).
 4. Under **Rooms at once**, choose **One** (the next item plays in the room you pick) or **Several** (tick rooms, or
    All rooms, and it plays in all of them together).
 5. Under **Music Assistant entry**, fill in the ID of your Music Assistant integration. In Home Assistant open
    Settings, Devices & services, Music Assistant, and open its entry: the ID is the last part of the page's address.
-6. Optional: under **Default player**, the player picked when the screen starts (the tile's own, or one of its rooms).
-7. Optional: under **Open library on**, what the Library key opens first: all kinds, Favourites, or one kind such as
-   Radio.
-8. Optional: under **Play when idle**, a playlist or station the play key starts on a player that has nothing to play:
-   its name (looked up as a playlist, or as the kind Open library on names) or its Music Assistant address, such as
-   `library://playlist/3`.
+6. Optional: under **Source**, what the Library key opens first: all kinds, Favourites, or one kind such as Radio.
 
 ## On the screen
 
@@ -49,4 +45,6 @@ library and play what you tap there, with Now playing, play and pause, skip and 
 - An item whose Music Assistant address is longer than 48 characters shows faded and plays nothing: the Tessera app
   keeps no longer text for a plugin.
 - The cover on Now playing is the tile's own player's. Another room shows what plays and who, without a cover.
-- Up to six rooms beside the tile's own player.
+- Up to nine rooms beside the tile's own player. The tile's own player is where it plays until you pick another.
+- A Music Assistant group ticked together with other rooms is not joined to them: each gets the item on its own, so
+  they play the same thing but not exactly in step. A group ticked alone plays in sync as always.

@@ -7,8 +7,8 @@ namespace esphome::music_rooms {
 class Players;
 class MusicCard;
 
-// The places a tile keeps its players in: its own (0) and its six rooms (the options room_1 to room_6).
-constexpr int SLOTS = 7;
+// The places a tile keeps its players in: its own (0) and its nine rooms (the options room_1 to room_9).
+constexpr int SLOTS = 10;
 // Tiles a layout has at most, for what the plugin keeps of each (its picked rooms) by the tile's index.
 constexpr int TILES = 64;
 
