@@ -33,6 +33,32 @@ FNK0104S are too small for its wheel, keyboard and keys, and the Tessera app doe
    `join_script: script.music_rooms_join` under `music_rooms:`. Without it a room ticked while the controlled room is a
    member of another room's group is not joined (Music Assistant ignores a join to a member).
 
+## Home Assistant scripts
+
+Two optional scripts in `scripts/` make the screens do what the Tessera app alone cannot. Add each in Home Assistant
+(Settings, Automations & scenes, Scripts, Add script, ⋮, Edit in YAML, paste the file), with the id in the file name,
+then name it under `music_rooms:` in the screen's ESPHome configuration:
+
+```yaml
+music_rooms:
+  library: <your Music Assistant config entry id>
+  play_script: script.music_rooms_play
+  join_script: script.music_rooms_join
+```
+
+| Script | What it does | Without it |
+|---|---|---|
+| `music_rooms_play` (`scripts/music_rooms_play.yaml`) | Plays a Spotify playlist or artist exactly: the app gives a plugin 48 characters of a text, so the screen sends the start of the address, the name and the kind, and the script plays the one search result whose address starts so. | Such an item plays by its name, which another item may share. |
+| `music_rooms_join` (`scripts/music_rooms_join.yaml`) | Joins the rooms you tick to the lead of the group the controlled room is in (the first of its `group_members`). Music Assistant ignores a join to a room that is a member of another room's group, and the screen cannot see the groups. | A room ticked while the controlled room is a member of another room's group is not joined. |
+
+Both run in Home Assistant with the screen's own permission to perform actions (`script.turn_on`). A screen must be
+allowed to perform Home Assistant actions (Settings, Devices & services, ESPHome, the screen, Configure).
+
+## Dashboard
+
+`dashboard/` holds a Home Assistant dashboard page in the same look: Now playing, every room with Add/Remove and its
+volume, the groups in colour, and the library and search. See `dashboard/README.md`.
+
 ## On the screen
 
 - A tap on the tile opens its card on **Now playing**: the rooms, what plays there, the artist and the album, the

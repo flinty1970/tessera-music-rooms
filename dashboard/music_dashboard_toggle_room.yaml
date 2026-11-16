@@ -1,0 +1,32 @@
+# Music rooms dashboard: Add and Remove on a room's row. Joins the room to the group of the room the dashboard controls
+# (through that group's lead: Music Assistant ignores a join to a member), or takes it out when it is already in.
+# Add it as a script with the id music_dashboard_toggle_room.
+alias: Music dashboard – add or remove a room
+description: Joins a room to the group of the room the music dashboard controls, or takes it out again.
+mode: queued
+fields:
+  room:
+    description: The media player to add or take out.
+    selector:
+      entity:
+        domain: media_player
+sequence:
+  - variables:
+      chosen: "{{ states('input_select.music_dashboard_room') }}"
+      group: "{{ state_attr(states('input_select.music_dashboard_room'), 'group_members') or [] }}"
+      lead: "{{ group[0] if group | length > 1 else chosen }}"
+  - condition: template
+    value_template: "{{ room != chosen and room != lead }}"
+  - if:
+      - condition: template
+        value_template: "{{ room in group }}"
+    then:
+      - action: media_player.unjoin
+        target:
+          entity_id: "{{ room }}"
+    else:
+      - action: media_player.join
+        target:
+          entity_id: "{{ lead }}"
+        data:
+          group_members: ["{{ room }}"]
