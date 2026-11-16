@@ -38,6 +38,9 @@ class MusicRooms : public Component, public tessera::Plugin {
   // The Music Assistant entry of the screen (the input `library`), for the tiles that name none of their own.
   void set_library(const std::string &entry) { library_ = entry; }
   const char *library() const { return library_.c_str(); }
+  // The script that plays a cut address exactly (script.music_rooms_play), "" to play such an item by name.
+  void set_play_script(const std::string &script) { play_script_ = script; }
+  const char *play_script() const { return play_script_.c_str(); }
 
   MusicCard *card_ = nullptr;  // the card that is open, to hand it the library's answers
 
@@ -56,7 +59,7 @@ class MusicRooms : public Component, public tessera::Plugin {
     return nullptr;
   }
   Entry entries_[TILES];
-  std::string library_;
+  std::string library_, play_script_;
 };
 
 }  // namespace esphome::music_rooms

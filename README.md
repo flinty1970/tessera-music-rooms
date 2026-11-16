@@ -20,14 +20,23 @@ FNK0104S are too small for its wheel, keyboard and keys, and the Tessera app doe
 4. The **Music Assistant entry** is asked once, when you add the plugin: the ID of your Music Assistant integration. In Home Assistant open
    Settings, Devices & services, Music Assistant, and open its entry: the ID is the last part of the page's address.
 5. Optional: under **Source**, what the Library key opens first: all kinds, Favourites, or one kind such as Radio.
+6. Optional, for the covers of every room (the tile's own player's shows without this): in Home Assistant add a
+   Template image helper for each Music Assistant player (Settings, Devices & services, Helpers, Create helper,
+   Template, Image), named `Music cover <player>` so its entity is `image.music_cover_<the player's object id>`
+   (`image.music_cover_stereo_3` for `media_player.stereo_3`), with the URL template
+   `{{ state_attr('media_player.stereo_3', 'entity_picture') }}` and Verify SSL off.
+7. Optional, so Spotify playlists and artists play exactly: add the script in `scripts/music_rooms_play.yaml` to Home
+   Assistant with the id `music_rooms_play`, and give the screen `play_script: script.music_rooms_play` under
+   `music_rooms:` in its ESPHome configuration. Without it such an item plays by its name.
 
 ## On the screen
 
-- A tap on the tile opens its card on **Now playing**: the rooms, what plays there, the artist and the album, the cover of the tile's
+- A tap on the tile opens its card on **Now playing**: the rooms, what plays there, the artist and the album, the
+  song's bar (how far, how long), shuffle and repeat, the cover of the tile's
   own player, play and pause, previous, next and the volume.
 - **Playing**, beside Library, lists every room of the tile with what it plays, those that play first. A tap on a room
   takes it over: Now playing and its keys are that room's and the next item plays there, while the other rooms go on
-  with their own music. Each room keeps its own queue in Music Assistant, so one room can play one Spotify account,
+  with their own music. Under the wheel, the volume of the room in the middle, each room its own. Each room keeps its own queue in Music Assistant, so one room can play one Spotify account,
   another the other account and a third the radio.
 - The rooms key at the top opens **Rooms**: a tap adds a room or takes it out, and **All rooms** picks them all. A room Home Assistant cannot reach is marked
   Unavailable.
@@ -61,10 +70,14 @@ FNK0104S are too small for its wheel, keyboard and keys, and the Tessera app doe
 - The library comes from Music Assistant's own `music_assistant.get_library`, four to six items at a time; a search
   from `music_assistant.search`, the library and the providers together (a dozen of one kind, or three of each).
 - The Tessera app gives a plugin at most 48 characters of a text, and a Spotify artist's or playlist's address is
-  longer: such an item plays by its name (and artist) through `music_assistant.play_media`, which finds it again.
+  longer: with the play script (Set up, step 7) Home Assistant finds the one item whose address starts so; without it
+  such an item plays by its name (and artist) through `music_assistant.play_media`.
+- A tile's data is about 2.6 KB for its own player and eleven rooms together, so a room sends only its state, name
+  and volume: what plays there, how far and shuffle and repeat come from its Music Assistant queue
+  (`music_assistant.get_queue`), asked by the screen while the room plays.
 - An item whose Music Assistant address is longer than 48 characters shows faded and plays nothing: the Tessera app
   keeps no longer text for a plugin.
-- The cover on Now playing is the tile's own player's. Another room shows what plays and who, without a cover.
+- The cover of the tile's own player always shows; another room's shows through its image entity (Set up, step 6).
 - Up to eleven rooms beside the tile's own player. The tile's own player is where it plays until you pick another.
 - A Music Assistant group ticked together with other rooms is not joined to them: each gets the item on its own, so
   they play the same thing but not exactly in step. A group ticked alone plays in sync as always.

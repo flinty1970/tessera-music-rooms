@@ -13,8 +13,15 @@ MusicRooms = music_rooms_ns.class_("MusicRooms", cg.Component)
 
 # The Music Assistant entry every tile of the screen browses (the input `library`), unless a tile names its own.
 CONF_LIBRARY = "library"
+# A Home Assistant script that plays an item whose address the app cut (a Spotify playlist's) exactly: it searches by
+# name and plays the result whose address starts as the cut one (scripts/music_rooms_play.yaml). Empty: by name.
+CONF_PLAY_SCRIPT = "play_script"
 CONFIG_SCHEMA = cv.Schema(
-    {cv.GenerateID(): cv.declare_id(MusicRooms), cv.Optional(CONF_LIBRARY, default=""): cv.string}
+    {
+        cv.GenerateID(): cv.declare_id(MusicRooms),
+        cv.Optional(CONF_LIBRARY, default=""): cv.string,
+        cv.Optional(CONF_PLAY_SCRIPT, default=""): cv.string,
+    }
 ).extend(cv.COMPONENT_SCHEMA)
 
 
@@ -22,4 +29,5 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     cg.add(var.set_library(config[CONF_LIBRARY]))
+    cg.add(var.set_play_script(config[CONF_PLAY_SCRIPT]))
     await smart_display.register_plugin(var, __file__)

@@ -26,6 +26,11 @@ states:
       media_artist: Nova Coast
       media_album_name: Long Way Home
       volume_level: 0.35
+      media_position: 77
+      media_duration: 214
+      media_position_updated_at: "2026-01-01T12:00:00+00:00"
+      shuffle: true
+      repeat: all
   media_player.bedroom:
     state: idle
     attributes:
@@ -69,6 +74,17 @@ commands:
       - { media_type: playlist, uri: "spotify--abcd1234://playlist/3aBcDeFgHiJkLmNoPqRsTu", name: The Lanterns Radio }
     radio: []
     podcasts: []
+
+  # A room's queue, as music_assistant.get_queue answers it (the manifest's answers keep eight fields of it).
+  "call_service:music_assistant.get_queue":
+    media_player.bedroom:
+      shuffle_enabled: false
+      repeat_mode: "off"
+      elapsed_time: 41
+      current_item:
+        duration: 187
+        stream_title: null
+        media_item: { name: Harbour Lights, artists: [{ name: The Lanterns }], album: { name: Harbour Lights } }
 
   # An album's songs, as Home Assistant browses them.
   "media_player/browse_media":

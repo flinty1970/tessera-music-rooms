@@ -1,0 +1,59 @@
+# Music rooms: play exactly an item whose Music Assistant address is longer than the Tessera app gives a plugin (a
+# Spotify playlist's or artist's, about 50 characters; the app keeps 48). The screen sends the address as far as it
+# has it (`start`), with the item's name and kind; this script searches Music Assistant by that name and plays the one
+# result whose address starts so. When none does, it plays by name, as the screen did before.
+#
+# Add it in Home Assistant as a script with the id music_rooms_play (Settings, Automations & scenes, Scripts, Add
+# script, Edit in YAML, paste this), then give each screen `play_script: script.music_rooms_play` (see the README).
+alias: Music rooms – play exactly
+description: Plays the Music Assistant item whose address starts as the screen's cut one.
+mode: parallel
+max: 20
+fields:
+  player:
+    description: The media player to play on.
+  start:
+    description: The item's address as far as the screen has it.
+  name:
+    description: The item's name.
+  kind:
+    description: playlist, artist, album, track, radio or podcast.
+  artist:
+    description: The item's artist, for a track or an album.
+  entry:
+    description: The Music Assistant config entry.
+sequence:
+  - action: music_assistant.search
+    data:
+      config_entry_id: "{{ entry }}"
+      name: "{{ name }}"
+      media_type: ["{{ kind }}"]
+      limit: 25
+      library_only: false
+    response_variable: found
+  - variables:
+      exact: >-
+        {% set lists = {'playlist': 'playlists', 'artist': 'artists', 'album': 'albums', 'track': 'tracks',
+                        'radio': 'radio', 'podcast': 'podcasts'} %}
+        {% set ns = namespace(uri='') %}
+        {% for item in found.get(lists.get(kind, ''), []) if ns.uri == '' and (item.uri | default('')).startswith(start) %}
+          {% set ns.uri = item.uri %}
+        {% endfor %}
+        {{ ns.uri }}
+  - if:
+      - condition: template
+        value_template: "{{ exact != '' }}"
+    then:
+      - action: media_player.play_media
+        target:
+          entity_id: "{{ player }}"
+        data:
+          media_content_id: "{{ exact }}"
+          media_content_type: "{{ kind }}"
+    else:
+      - action: music_assistant.play_media
+        target:
+          entity_id: "{{ player }}"
+        data:
+          media_id: "{{ name }}"
+          media_type: "{{ kind }}"

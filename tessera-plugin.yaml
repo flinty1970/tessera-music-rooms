@@ -3,7 +3,7 @@
 # its keys. Every name, label and hint below is a key into translations/<language>.json, part "app". docs/MANIFEST.md
 # in the plugins repository has every field.
 id: music_rooms
-version: 0.11.0
+version: 0.12.0
 # 0.15: options of kind entity (the rooms); 0.17: the cover of the tile's own player by name (cover:).
 api: "0.17"
 icon: speaker-multiple
@@ -29,8 +29,10 @@ permissions:
   # A page of the Music Assistant library: favourites, playlists, radio and the rest, a few items at a time; and a
   # search, of the library and Music Assistant's providers (Spotify, TuneIn, ...).
   # An album's songs, as Home Assistant browses them on the tile's own player.
+  # What plays in each room other than the tile's own: its Music Assistant queue (the song, its artist and album, how
+  # far it is, shuffle and repeat), so the rooms themselves send only their state, name and volume and eleven fit.
   ha_commands: ["call_service:music_assistant.get_library", "call_service:music_assistant.search",
-                "media_player/browse_media"]
+                "media_player/browse_media", "call_service:music_assistant.get_queue"]
   # Play an item in the rooms picked, put rooms together for it and take them apart again, and the keys of Now playing.
   home_assistant_actions:
     - media_player.play_media
@@ -42,6 +44,11 @@ permissions:
     - media_player.media_next_track
     - media_player.media_previous_track
     - media_player.volume_set
+    - media_player.shuffle_set
+    # A Spotify playlist or artist, whose address is longer than the app gives a plugin, played exactly by the
+    # screen's play script (scripts/music_rooms_play.yaml), when the screen names one.
+    - script.turn_on
+    - media_player.repeat_set
 
 tiles:
   - id: player
@@ -56,27 +63,41 @@ tiles:
     # picked.
     domains: [media_player]
     has_attributes: [mass_player_type]
-    attributes: [media_title, media_artist, media_album_name, volume_level, supported_features]
+    attributes: [media_title, media_artist, media_album_name, volume_level, mass_player_type, supported_features, media_position,
+                 media_duration, media_position_updated_at, shuffle, repeat]
     example: tile_example
     preview: { title: "{name}", value: "{media_title}" }
     options:
-      - { id: room_1, kind: entity, domains: [media_player], attributes: [media_title, media_artist, media_album_name, volume_level, mass_player_type, supported_features], label: room_1, hint: room_hint }
-      - { id: room_2, kind: entity, domains: [media_player], attributes: [media_title, media_artist, media_album_name, volume_level, mass_player_type, supported_features], label: room_2 }
-      - { id: room_3, kind: entity, domains: [media_player], attributes: [media_title, media_artist, media_album_name, volume_level, mass_player_type, supported_features], label: room_3 }
-      - { id: room_4, kind: entity, domains: [media_player], attributes: [media_title, media_artist, media_album_name, volume_level, mass_player_type, supported_features], label: room_4 }
-      - { id: room_5, kind: entity, domains: [media_player], attributes: [media_title, media_artist, media_album_name, volume_level, mass_player_type, supported_features], label: room_5 }
-      - { id: room_6, kind: entity, domains: [media_player], attributes: [media_title, media_artist, media_album_name, volume_level, mass_player_type, supported_features], label: room_6 }
-      - { id: room_7, kind: entity, domains: [media_player], attributes: [media_title, media_artist, media_album_name, volume_level, mass_player_type, supported_features], label: room_7 }
-      - { id: room_8, kind: entity, domains: [media_player], attributes: [media_title, media_artist, media_album_name, volume_level, mass_player_type, supported_features], label: room_8 }
-      - { id: room_9, kind: entity, domains: [media_player], attributes: [media_title, media_artist, media_album_name, volume_level, mass_player_type, supported_features], label: room_9 }
-      - { id: room_10, kind: entity, domains: [media_player], attributes: [media_title, media_artist, media_album_name, volume_level, mass_player_type, supported_features], label: room_10 }
-      - { id: room_11, kind: entity, domains: [media_player], attributes: [media_title, media_artist, media_album_name, volume_level, mass_player_type, supported_features], label: room_11 }
+      - { id: room_1, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features], label: room_1, hint: room_hint }
+      - { id: room_2, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features], label: room_2 }
+      - { id: room_3, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features], label: room_3 }
+      - { id: room_4, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features], label: room_4 }
+      - { id: room_5, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features], label: room_5 }
+      - { id: room_6, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features], label: room_6 }
+      - { id: room_7, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features], label: room_7 }
+      - { id: room_8, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features], label: room_8 }
+      - { id: room_9, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features], label: room_9 }
+      - { id: room_10, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features], label: room_10 }
+      - { id: room_11, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features], label: room_11 }
       # The source the Library key opens: the list of kinds, the favourites, or one kind (Radio, Playlists, ...).
       - { id: open_on, kind: choice, label: open_on, hint: open_on_hint, default: kinds,
           choices: [{ value: kinds, label: open_kinds }, { value: favourites, label: open_favourites },
                     { value: playlist, label: open_playlists }, { value: radio, label: open_radio },
                     { value: album, label: open_albums }, { value: artist, label: open_artists },
                     { value: track, label: open_tracks }, { value: podcast, label: open_podcasts }] }
+
+# A room's queue as the screen needs it: about 200 bytes instead of Music Assistant's 2 KB.
+answers:
+  - command: call_service:music_assistant.get_queue
+    fields:
+      title: "[*].current_item.media_item.name"
+      artist: "[*].current_item.media_item.artists[0].name"
+      album: "[*].current_item.media_item.album.name"
+      stream: "[*].current_item.stream_title"
+      duration: { path: "[*].current_item.duration", as: number }
+      elapsed: { path: "[*].elapsed_time", as: number }
+      shuffle: "[*].shuffle_enabled"
+      repeat: "[*].repeat_mode"
 
 cards:
   # Now playing, the rooms and the library, over the whole width of the glass. Its one picture is the cover of the

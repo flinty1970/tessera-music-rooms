@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.12.0
+
+- **The song's bar** on Now playing: how far it is and how long, moving while it plays.
+- **Shuffle and repeat** keys beside next (repeat all, one, off).
+- **Each room's own volume** under Playing's wheel, for the room in the middle, also while several play together.
+- **Covers of every room**, not only the tile's own player: each player's cover through an image entity in Home
+  Assistant (see Set up, step 6).
+- **Spotify playlists and artists play exactly** with the play script (Set up, step 7), not by a name another one may
+  share.
+- Rooms now send only their state, name and volume; what plays there comes from Music Assistant's queue. Eleven rooms
+  with long names fit the tile's data again, so a room no longer loses its details (and its "can join") to the limit.
+
 ## 0.11.0
 
 - **The album** beside the artist, under what plays: on the tile and on Now playing ("The Reytons · What's Rock and
