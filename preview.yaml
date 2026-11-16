@@ -1,0 +1,57 @@
+# What tools/preview.py shows (docs/PREVIEW.md in the plugins repository): a Music Assistant player in the kitchen that
+# plays, a bedroom that is idle and an office Home Assistant cannot reach; the card on Now playing, and a page of the
+# library as music_assistant.get_library answers it.
+tiles:
+  - tile: player
+    name: Music
+    entity: media_player.kitchen
+    options:
+      room_1: media_player.bedroom
+      room_2: media_player.office
+      rooms_at_once: several
+      library: 01JABCDEFGHJKMNPQRSTVWXYZ0
+  - tile: player
+    name: Bedroom
+    entity: media_player.bedroom
+    sizes: [1x1, 2x1]
+    options: { room_1: media_player.kitchen }
+
+states:
+  media_player.kitchen:
+    state: playing
+    attributes:
+      friendly_name: Kitchen
+      mass_player_type: player
+      media_title: Morning Light
+      media_artist: Nova Coast
+      volume_level: 0.35
+  media_player.bedroom:
+    state: idle
+    attributes:
+      friendly_name: Bedroom
+      mass_player_type: player
+      volume_level: 0.2
+  media_player.office:
+    state: unavailable
+    attributes:
+      friendly_name: Office
+      mass_player_type: player
+
+cards:
+  - card: music
+    entity: media_player.kitchen
+
+commands:
+  "call_service:music_assistant.get_library":
+    items:
+      - { media_type: playlist, uri: "library://playlist/3", name: Morning mix, version: "", favorite: true }
+      - { media_type: playlist, uri: "library://playlist/7", name: Dinner jazz, version: "", favorite: false }
+      - { media_type: playlist, uri: "library://playlist/12", name: Focus, version: "", favorite: true }
+      - { media_type: playlist, uri: "library://playlist/15", name: Road trip, version: "", favorite: false }
+    limit: 6
+    offset: 0
+    order_by: sort_name
+    media_type: playlist
+
+pictures:
+  "cover:media_player.kitchen": preview/cover.jpg

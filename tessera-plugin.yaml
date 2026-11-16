@@ -1,0 +1,64 @@
+# Music rooms: a Music Assistant player's tile that picks the rooms the next item plays in, browses the Music Assistant
+# library (favourites, playlists, radio, albums, artists, tracks) and plays what you tap there, with Now playing and
+# its keys. Every name, label and hint below is a key into translations/<language>.json, part "app". docs/MANIFEST.md
+# in the plugins repository has every field.
+id: music_rooms
+version: 0.1.0
+# 0.15: options of kind entity (the rooms); 0.17: the cover of the tile's own player by name (cover:).
+api: "0.17"
+icon: speaker-multiple
+maintainer: flinty1970
+license: MIT
+stage: beta
+topics: [media]
+requires:
+  esphome: 2026.6.2
+boards: any
+flash_kb: 24
+
+permissions:
+  # A page of the Music Assistant library: favourites, playlists, radio and the rest, a few items at a time.
+  ha_commands: ["call_service:music_assistant.get_library"]
+  # Play an item in the rooms picked, put rooms together for it and take them apart again, and the keys of Now playing.
+  home_assistant_actions:
+    - media_player.play_media
+    - media_player.join
+    - media_player.unjoin
+    - media_player.media_play_pause
+    - media_player.media_next_track
+    - media_player.media_previous_track
+    - media_player.volume_set
+
+tiles:
+  - id: player
+    name: tile_name
+    icon: speaker-multiple
+    sizes: { min: 1x1, max: 3x3 }
+    # A few labels on the tile; the card's rows are the card's own.
+    memory: 900
+    # A large tile shows the cover of its own player beside what plays.
+    pictures: 1
+    # The tile's own Music Assistant player (only those carry mass_player_type), the room it plays in until another is
+    # picked.
+    domains: [media_player]
+    has_attributes: [mass_player_type]
+    attributes: [media_title, media_artist, volume_level]
+    example: tile_example
+    preview: { title: "{name}", value: "{media_title}" }
+    options:
+      - { id: room_1, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level], label: room_1, hint: room_hint }
+      - { id: room_2, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level], label: room_2 }
+      - { id: room_3, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level], label: room_3 }
+      - { id: room_4, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level], label: room_4 }
+      - { id: room_5, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level], label: room_5 }
+      - { id: room_6, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level], label: room_6 }
+      - { id: room_7, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level], label: room_7 }
+      - { id: room_8, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level], label: room_8 }
+      - { id: rooms_at_once, kind: choice, label: rooms_at_once, hint: rooms_at_once_hint, default: one,
+          choices: [{ value: one, label: rooms_one }, { value: several, label: rooms_several }] }
+      - { id: library, kind: text, label: library, hint: library_hint }
+
+cards:
+  # Now playing, the rooms and the library, over the whole width of the glass. Its one picture is the cover of the
+  # tile's own player.
+  - { id: music, name: card_name, wide: true, pictures: 1 }
