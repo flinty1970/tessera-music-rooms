@@ -25,6 +25,10 @@ FNK0104S are too small for its wheel, keyboard and keys, and the Tessera app doe
 
 - A tap on the tile opens its card on **Now playing**: the rooms, what plays there and who, the cover of the tile's
   own player, play and pause, previous, next and the volume.
+- **Playing**, beside Library, lists every room of the tile with what it plays, those that play first. A tap on a room
+  takes it over: Now playing and its keys are that room's and the next item plays there, while the other rooms go on
+  with their own music. Each room keeps its own queue in Music Assistant, so one room can play one Spotify account,
+  another the other account and a third the radio.
 - The rooms key at the top opens **Rooms**: a tap adds a room or takes it out, and **All rooms** picks them all. A room Home Assistant cannot reach is marked
   Unavailable.
 - **Library** shows Favourites, Playlists, Radio, Albums, Artists, Tracks and Podcasts as large keys. A kind's items

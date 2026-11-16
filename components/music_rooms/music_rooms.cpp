@@ -134,6 +134,14 @@ class Players : public tessera::InPsram {
     return mask;
   }
   int room_count() const { return __builtin_popcount(used_mask()); }
+  // The card takes this room over (what plays where, a tap on a room): its keys act on it and the next item plays
+  // there; nothing is joined, taken apart or stopped, in this room or any other.
+  void focus(int slot) {
+    plugin_->set_chosen(index_, (1u << slot) & used_mask() ? (1u << slot) : 1);
+    plugin_->set_joined(index_, 0);
+    note_ = Note::NONE;
+  }
+
   void choose(uint16_t rooms) {
     const uint16_t before = chosen();
     rooms &= used_mask();
@@ -446,6 +454,14 @@ class MusicCard : public tessera::Card {
     lv_obj_set_style_text_align(library_text_, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(library_text_, LV_ALIGN_CENTER, 0, 0);
     ui::set_text(library_text_, plugin_->text("library"));
+    // What plays where: every room of the tile with what it plays; a tap takes that room over.
+    const int playing_w = std::min(width_ / 4, ui::text_width(plugin_->text("everywhere"), Font::BODY_LARGE) + 2 * gap_ + ui::px(24));
+    everywhere_key_ = button(width_ - library_w - gap_ - playing_w, 0, playing_w, key_, theme::RAISED);
+    everywhere_text_ = ui::label(everywhere_key_, Font::BODY_LARGE, theme::INK);
+    lv_obj_set_width(everywhere_text_, playing_w - 2 * gap_);
+    lv_obj_set_style_text_align(everywhere_text_, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(everywhere_text_, LV_ALIGN_CENTER, 0, 0);
+    ui::set_text(everywhere_text_, plugin_->text("everywhere"));
 
     // Now playing: the cover of the tile's own player, what plays and who, and the keys.
     const int body_y = key_ + gap_, body_h = height_ - body_y - round_ - gap_;
@@ -497,28 +513,30 @@ class MusicCard : public tessera::Card {
     }
 
     // The lists: as many rows as fit between the head and the pager.
+    // A row and the pager are a finger's height, lower than the head's keys, so more rows fit a page.
     const int row_gap = ui::px(6);
-    rows_ = std::max(1, std::min(ROWS, (height_ - 2 * key_ - 2 * gap_ + row_gap) / (key_ + row_gap)));
+    row_h_ = std::min(key_, std::max(ui::mm(8), ui::line_height(Font::BODY_LARGE) + ui::px(16)));
+    rows_ = std::max(1, std::min(ROWS, (height_ - key_ - row_h_ - 2 * gap_ + row_gap) / (row_h_ + row_gap)));
     for (int i = 0; i < rows_; ++i) {
       Row &r = row_[i];
-      r.y = key_ + gap_ + i * (key_ + row_gap);
-      r.box = button(0, r.y, width_, key_, theme::CARD);
+      r.y = key_ + gap_ + i * (row_h_ + row_gap);
+      r.box = button(0, r.y, width_, row_h_, theme::CARD);
       r.icon = glyph(r.box, ICON_MUSIC, theme::MUTED);
       r.text = ui::label(r.box, Font::BODY_LARGE, theme::INK);
       r.side = ui::label(r.box, Font::BODY, theme::MUTED);
       r.mark = glyph(r.box, ICON_CHECK, theme::ACCENT);
     }
-    const int pager_y = height_ - key_;
-    prev_ = button(0, pager_y, key_ * 2, key_, theme::RAISED);
+    const int pager_y = height_ - row_h_;
+    prev_ = button(0, pager_y, key_ * 2, row_h_, theme::RAISED);
     prev_icon_ = glyph(prev_, ICON_LEFT, theme::INK);
     lv_obj_align(prev_icon_, LV_ALIGN_CENTER, 0, 0);
-    next_ = button(width_ - key_ * 2, pager_y, key_ * 2, key_, theme::RAISED);
+    next_ = button(width_ - key_ * 2, pager_y, key_ * 2, row_h_, theme::RAISED);
     next_icon_ = glyph(next_, ICON_RIGHT, theme::INK);
     lv_obj_align(next_icon_, LV_ALIGN_CENTER, 0, 0);
     page_ = ui::label(parent_, Font::BODY, theme::MUTED);
     lv_obj_set_size(page_, std::max(1, width_ - 4 * key_ - 2 * gap_), ui::line_height(Font::BODY));
     lv_obj_set_style_text_align(page_, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_pos(page_, key_ * 2 + gap_, pager_y + (key_ - ui::line_height(Font::BODY)) / 2);
+    lv_obj_set_pos(page_, key_ * 2 + gap_, pager_y + (row_h_ - ui::line_height(Font::BODY)) / 2);
     note_ = ui::text(parent_, Font::BODY_LARGE, theme::MUTED);
     lv_obj_set_size(note_, width_, ui::line_height(Font::BODY_LARGE) * 2);
     lv_obj_set_style_text_align(note_, LV_TEXT_ALIGN_CENTER, 0);
@@ -578,6 +596,27 @@ class MusicCard : public tessera::Card {
       open_text_ = ui::label(open_, Font::BODY_LARGE, theme::INK);
       ui::set_text(open_text_, plugin_->text("open"));
       lv_obj_align(open_text_, LV_ALIGN_CENTER, 0, 0);
+      // What plays where, on a wheel of its own: every room with what it plays; Control takes the middle one over.
+      rooms_wheel_ = lv_roller_create(parent_);
+      lv_roller_set_options(rooms_wheel_, " ", LV_ROLLER_MODE_NORMAL);
+      ui::set_font(rooms_wheel_, face);
+      lv_obj_set_style_text_font(rooms_wheel_, lv_obj_get_style_text_font(rooms_wheel_, LV_PART_MAIN), LV_PART_SELECTED);
+      lv_obj_set_style_text_align(rooms_wheel_, LV_TEXT_ALIGN_CENTER, 0);
+      lv_obj_set_style_text_line_space(rooms_wheel_, ui::px(10), 0);
+      lv_obj_set_style_border_width(rooms_wheel_, 0, 0);
+      lv_obj_set_style_radius(rooms_wheel_, ui::px(12), 0);
+      lv_obj_set_style_bg_opa(rooms_wheel_, LV_OPA_COVER, 0);
+      lv_obj_set_style_bg_opa(rooms_wheel_, LV_OPA_COVER, LV_PART_SELECTED);
+      lv_obj_set_size(rooms_wheel_, width_, wheel_h);
+      lv_obj_set_pos(rooms_wheel_, 0, wheel_y);
+      take_w_ = ui::text_width(plugin_->text("take"), Font::BODY_LARGE) + 2 + 4 * gap_;
+      take_ = button(width_ - take_w_, 0, take_w_, key_, theme::ACCENT);
+      take_text_ = ui::label(take_, Font::BODY_LARGE, theme::ON_ACCENT);
+      ui::set_text(take_text_, plugin_->text("take"));
+      lv_obj_align(take_text_, LV_ALIGN_CENTER, 0, 0);
+      style_wheel();
+      hide(rooms_wheel_, true);
+      hide(take_, true);
       make_keyboard();
       hide(wheel_, true);
       hide(play_, true);
@@ -601,6 +640,10 @@ class MusicCard : public tessera::Card {
   void on_theme() override {
     restyle(head_, theme::RAISED);
     restyle(library_, theme::RAISED);
+    restyle(everywhere_key_, theme::RAISED);
+    restyle(take_, theme::ACCENT);
+    ui::set_color(take_text_, theme::ON_ACCENT);
+    ui::set_color(everywhere_text_, theme::INK);
     restyle(prev_, theme::RAISED);
     restyle(next_, theme::RAISED);
     for (int i = 0; i < 6; ++i) if (keys_[i]) restyle(keys_[i], i == 1 ? theme::ACCENT : theme::RAISED);
@@ -658,6 +701,7 @@ class MusicCard : public tessera::Card {
         show(View::NOW);
         return true;
       case View::ROOMS: show(View::NOW); return true;
+      case View::PLAYING: show(View::NOW); return true;
       default: return false;
     }
   }
@@ -670,6 +714,7 @@ class MusicCard : public tessera::Card {
     if (view_ == View::NOW) {
       if (inside(library_, p)) { open_library(*tile); return; }
       if (inside(head_, p)) { show(View::ROOMS); return; }
+      if (inside(everywhere_key_, p)) { show(View::PLAYING); return; }
       if (inside(keys_[0], p)) tile->step_track(false);
       else if (inside(keys_[1], p)) tile->play_pause();
       else if (inside(keys_[2], p)) tile->step_track(true);
@@ -691,6 +736,18 @@ class MusicCard : public tessera::Card {
       type_at(p);
       return;
     }
+#if LV_USE_ROLLER
+    if (view_ == View::PLAYING && rooms_wheel_) {
+      if (!inside(take_, p)) return;
+      const uint32_t n = lv_roller_get_selected(rooms_wheel_);
+      if (static_cast<int>(n) >= entries_) return;
+      const int slot = playing_slots_[n];
+      if (gone(tile->room(slot).state)) return;
+      tile->focus(slot);
+      show(View::NOW);
+      return;
+    }
+#endif
     if (inside(prev_, p) && !lv_obj_has_flag(prev_, LV_OBJ_FLAG_HIDDEN)) { turn(-1); return; }
     if (inside(next_, p) && !lv_obj_has_flag(next_, LV_OBJ_FLAG_HIDDEN)) { turn(1); return; }
     for (int i = 0; i < rows_; ++i) {
@@ -732,7 +789,7 @@ class MusicCard : public tessera::Card {
   }
 
  private:
-  enum class View : uint8_t { NONE, NOW, ROOMS, KINDS, ITEMS, SEARCH };
+  enum class View : uint8_t { NONE, NOW, ROOMS, KINDS, ITEMS, SEARCH, PLAYING };
   // The keyboard of a search: digits, three rows of letters, and a row of space and delete.
   static constexpr int KEYS = 10 + 26 + 2;
   struct TypeKey { lv_obj_t *box = nullptr, *text = nullptr; char ch = 0; };
@@ -786,21 +843,21 @@ class MusicCard : public tessera::Card {
     const int pad = gap_ + ui::px(4), icon_w = lv_obj_get_width(r.icon), mark_w = lv_obj_get_width(r.mark);
     set_icon(r.icon, icon);
     ui::set_color(r.icon, ticked ? theme::ACCENT : theme::MUTED);
-    lv_obj_set_pos(r.icon, pad, (key_ - ui::line_height(Font::ICON_SMALL)) / 2);
+    lv_obj_set_pos(r.icon, pad, (row_h_ - ui::line_height(Font::ICON_SMALL)) / 2);
     const int side_w = side.empty() ? 0 : std::min(ui::text_width(side, Font::BODY) + ui::px(4), width_ * 2 / 5);
     const int text_x = pad + icon_w + gap_;
     const int right = width_ - pad - mark_w - gap_;
     ui::set_text(r.side, side);
     lv_obj_set_size(r.side, std::max(1, side_w), ui::line_height(Font::BODY));
-    lv_obj_set_pos(r.side, right - side_w, (key_ - ui::line_height(Font::BODY)) / 2);
+    lv_obj_set_pos(r.side, right - side_w, (row_h_ - ui::line_height(Font::BODY)) / 2);
     lv_obj_set_size(r.text, std::max(1, right - side_w - gap_ - text_x), ui::line_height(Font::BODY_LARGE));
-    lv_obj_set_pos(r.text, text_x, (key_ - ui::line_height(Font::BODY_LARGE)) / 2);
+    lv_obj_set_pos(r.text, text_x, (row_h_ - ui::line_height(Font::BODY_LARGE)) / 2);
     ui::set_text(r.text, words);
     ui::set_color(r.text, faded ? theme::SUBTLE : theme::INK);
     set_icon(r.mark, more ? ICON_RIGHT : ICON_CHECK);
     ui::set_color(r.mark, more ? theme::MUTED : theme::ACCENT);
     hide(r.mark, !ticked && !more);
-    lv_obj_set_pos(r.mark, width_ - pad - mark_w, (key_ - ui::line_height(Font::ICON_SMALL)) / 2);
+    lv_obj_set_pos(r.mark, width_ - pad - mark_w, (row_h_ - ui::line_height(Font::ICON_SMALL)) / 2);
   }
 
   // The Library key: where the tile's Open library on says, else the list of kinds.
@@ -822,7 +879,8 @@ class MusicCard : public tessera::Card {
 
   void show(View view) {
     view_ = view;
-    if (view == View::ROOMS) page_no_ = 0;
+    if (view == View::ROOMS || view == View::PLAYING) page_no_ = 0;
+    if (view == View::PLAYING) start_playing_ = true;
     if (view == View::ITEMS) {
       total_ = 0;
       offset_ = 0;
@@ -836,9 +894,12 @@ class MusicCard : public tessera::Card {
   void paint_head(Players &tile, bool now) {
     const int pad = gap_ + ui::px(4);
     hide(library_, !now);
+    hide(everywhere_key_, !now);
     const bool row = view_ == View::ITEMS && wheel_;
-    const int head_w = std::max(1, now ? width_ - lv_obj_get_width(library_) - gap_
-                                       : row ? width_ - play_w_ - find_w_ - open_w_ - 3 * gap_ : width_);
+    const bool taking = view_ == View::PLAYING && rooms_wheel_;
+    const int head_w = std::max(1, now ? width_ - lv_obj_get_width(library_) - lv_obj_get_width(everywhere_key_) - 2 * gap_
+                                       : row ? width_ - play_w_ - find_w_ - open_w_ - 3 * gap_
+                                       : taking ? width_ - take_w_ - gap_ : width_);
     lv_obj_set_width(head_, head_w);
     set_icon(head_icon_, tile.room_count() > 1 ? ICON_ROOMS : ICON_SPEAKER);
     lv_obj_set_pos(head_icon_, pad, (key_ - ui::line_height(Font::ICON_SMALL)) / 2);
@@ -887,6 +948,10 @@ class MusicCard : public tessera::Card {
       hide(find_, true);
       hide(open_, true);
     }
+    if (view_ != View::PLAYING || !tile) {
+      hide(rooms_wheel_, true);
+      hide(take_, true);
+    }
     if (view_ != View::SEARCH || !tile) {
       hide(field_, true);
       hide(go_, true);
@@ -895,6 +960,7 @@ class MusicCard : public tessera::Card {
     if (!tile) {
       hide(head_, true);
       hide(library_, true);
+      hide(everywhere_key_, true);
       hide(note_, false);
       ui::set_text(note_, plugin_->text("choose_player"));
       return;
@@ -902,6 +968,7 @@ class MusicCard : public tessera::Card {
     if (view_ == View::SEARCH) {
       hide(head_, true);
       hide(library_, true);
+      hide(everywhere_key_, true);
       for (int i = 0; i < rows_; ++i) hide(row_[i].box, true);
       paint_search();
       return;
@@ -913,6 +980,7 @@ class MusicCard : public tessera::Card {
       return;
     }
     if (view_ == View::ROOMS) paint_rooms(*tile);
+    else if (view_ == View::PLAYING) paint_playing(*tile);
     else if (view_ == View::KINDS) paint_kinds();
     else paint_items();
   }
@@ -942,6 +1010,73 @@ class MusicCard : public tessera::Card {
         }
       }
     }
+  }
+
+  // What plays where: every room of the tile, those that play first, each with what it plays and who; a tick on the
+  // room the card holds now.
+  void paint_playing(Players &tile) {
+    entries_ = 0;
+    int listed[SLOTS];
+    for (int pass = 0; pass < 3; ++pass)
+      for (int i = 0; i < SLOTS; ++i) {
+        const Room &r = tile.room(i);
+        if (!r.used()) continue;
+        const int rank = !strcmp(r.state, "playing") ? 0 : !strcmp(r.state, "paused") ? 1 : 2;
+        if (rank == pass) listed[entries_++] = i;
+      }
+    const int lead = tile.lead_slot();
+#if LV_USE_ROLLER
+    if (rooms_wheel_) {
+      for (int i = 0; i < rows_; ++i) hide(row_[i].box, true);
+      hide(rooms_wheel_, false);
+      hide(take_, false);
+      std::string lines;
+      int at_lead = 0;
+      for (int n = 0; n < entries_; ++n) {
+        const int slot = listed[n];
+        playing_slots_[n] = slot;
+        if (slot == lead) at_lead = n;
+        if (n) lines += '\n';
+        lines += tile.room(slot).name;
+        const std::string what = playing_words(tile.room(slot));
+        if (!what.empty()) lines += std::string(" — ") + what;
+      }
+      // The wheel keeps its place while what plays changes; it starts on the room the card holds.
+      if (lines != playing_lines_) {
+        const uint32_t was = lv_roller_get_selected(rooms_wheel_);
+        playing_lines_ = lines;
+        lv_roller_set_options(rooms_wheel_, entries_ ? lines.c_str() : " ", LV_ROLLER_MODE_NORMAL);
+        lv_roller_set_visible_row_count(rooms_wheel_, 5);
+        lv_obj_set_height(rooms_wheel_, wheel_h_());
+        lv_roller_set_selected(rooms_wheel_, std::min<uint32_t>(was, entries_ ? entries_ - 1 : 0), LV_ANIM_OFF);
+      }
+      if (start_playing_) {
+        start_playing_ = false;
+        lv_roller_set_selected(rooms_wheel_, at_lead, LV_ANIM_OFF);
+      }
+      return;
+    }
+#endif
+    const int first = page_no_ * rows_;
+    for (int i = 0; i < rows_; ++i) {
+      const int at = first + i;
+      if (at >= entries_) { hide(row_[i].box, true); continue; }
+      const int slot = listed[at];
+      row_entry_[i] = slot;
+      const Room &r = tile.room(slot);
+      const bool playing = !strcmp(r.state, "playing"), paused = !strcmp(r.state, "paused");
+      const std::string what = playing_words(r);
+      row(i, playing ? ICON_PLAY : paused ? ICON_PAUSE : ICON_SPEAKER, r.name, what, slot == lead, gone(r.state));
+    }
+    pager(entries_);
+  }
+
+  // What a room plays and who, or that nothing plays, or that Home Assistant cannot reach it.
+  std::string playing_words(const Room &r) const {
+    if (gone(r.state)) return plugin_->text("unavailable");
+    const bool on = !strcmp(r.state, "playing") || !strcmp(r.state, "paused");
+    if (on && r.title[0]) return r.artist[0] ? std::string(r.title) + " · " + r.artist : std::string(r.title);
+    return plugin_->text("idle");
   }
 
   void paint_rooms(Players &tile) {
@@ -1103,6 +1238,14 @@ class MusicCard : public tessera::Card {
   }
 
   void tap_row(Players &tile, int i) {
+    if (view_ == View::PLAYING && rooms_wheel_) return;
+    if (view_ == View::PLAYING) {
+      const int slot = row_entry_[i];
+      if (slot < 0 || gone(tile.room(slot).state)) return;
+      tile.focus(slot);
+      show(View::NOW);
+      return;
+    }
     if (view_ == View::ROOMS) {
       const int slot = row_entry_[i];
       if (slot < 0) { tile.choose(tile.used_mask()); paint(); return; }
@@ -1365,6 +1508,12 @@ class MusicCard : public tessera::Card {
 
   // The wheel's colours, as the alarm clock's: the middle line in the accent.
   void style_wheel() {
+    if (rooms_wheel_) {
+      lv_obj_set_style_bg_color(rooms_wheel_, ui::color(theme::RAISED), 0);
+      lv_obj_set_style_text_color(rooms_wheel_, ui::color(theme::MUTED), 0);
+      lv_obj_set_style_bg_color(rooms_wheel_, ui::tone_color(tessera::Tone::ACCENT, theme::INK), LV_PART_SELECTED);
+      lv_obj_set_style_text_color(rooms_wheel_, ui::color(theme::ON_ACCENT), LV_PART_SELECTED);
+    }
     if (!wheel_) return;
     lv_obj_set_style_bg_color(wheel_, ui::color(theme::RAISED), 0);
     lv_obj_set_style_text_color(wheel_, ui::color(theme::MUTED), 0);
@@ -1443,6 +1592,7 @@ class MusicCard : public tessera::Card {
 
   MusicRooms *plugin_;
   lv_obj_t *parent_{};
+  int row_h_ = 0;
   int width_ = 0, height_ = 0, tile_ = -1, gap_ = 0, key_ = 0, round_ = 0, cover_x_ = 0, rows_ = 0, shifted_ = 0;
   lv_obj_t *head_{}, *head_icon_{}, *head_text_{}, *head_more_{}, *library_{}, *library_text_{};
   lv_obj_t *cover_{}, *title_{}, *artist_{}, *volume_{}, *keys_[6] = {}, *key_icon_[6] = {};
@@ -1465,7 +1615,11 @@ class MusicCard : public tessera::Card {
   char query_[33] = "";
   bool searching_ = false, everywhere_ = false;
   int total_ = 0, play_w_ = 0, find_w_ = 0, open_w_ = 0;
-  lv_obj_t *open_{}, *open_text_{};
+  lv_obj_t *open_{}, *open_text_{}, *everywhere_key_{}, *everywhere_text_{};
+  lv_obj_t *rooms_wheel_{}, *take_{}, *take_text_{};
+  int take_w_ = 0, playing_slots_[SLOTS] = {};
+  bool start_playing_ = false;
+  std::string playing_lines_;
   uint8_t opened_ = CLOSED;
   bool from_artist_ = false;
   char open_artist_[49] = "", open_album_[49] = "", open_uri_[49] = "";

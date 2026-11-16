@@ -3,7 +3,7 @@
 # its keys. Every name, label and hint below is a key into translations/<language>.json, part "app". docs/MANIFEST.md
 # in the plugins repository has every field.
 id: music_rooms
-version: 0.8.0
+version: 0.9.0
 # 0.15: options of kind entity (the rooms); 0.17: the cover of the tile's own player by name (cover:).
 api: "0.17"
 icon: speaker-multiple

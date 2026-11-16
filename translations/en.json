@@ -42,7 +42,9 @@
     "one_radio": "Radio: {name}",
     "one_podcast": "Podcast: {name}",
     "open": "Open",
-    "opened_album": "{album} · {artist}"
+    "opened_album": "{album} · {artist}",
+    "everywhere": "Playing",
+    "take": "Control"
   },
   "app": {
     "name": "Music rooms",

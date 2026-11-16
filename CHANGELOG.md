@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.0
+
+- **Playing**, beside Library on Now playing: every room of the tile with what it plays and who, the rooms that
+  play first. A tap on a room takes it over: Now playing, its keys and the next item are that room's, while every
+  other room goes on with its own music (another Spotify account, the radio). Tick rooms under the rooms key to add
+  speakers to it.
+
 ## 0.8.0
 
 - For screens of 4 inches or more only (see Screens in the README): the CYD and the 3.5" boards are too small.
