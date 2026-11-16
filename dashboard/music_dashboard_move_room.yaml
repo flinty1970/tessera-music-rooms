@@ -44,14 +44,21 @@ sequence:
   then:
   - if:
     - condition: template
-      value_template: '{{ not grp_mode and room in group }}'
+      value_template: '{{ room in group }}'
     then:
     - action: media_player.unjoin
       continue_on_error: true
       target:
         entity_id: '{{ room }}'
     - delay:
-        milliseconds: 300
+        seconds: 1
+  - alias: 'Pause what plays first: a Spotify account plays one stream at a time'
+    action: media_player.media_pause
+    continue_on_error: true
+    target:
+      entity_id: '{{ lead }}'
+  - delay:
+      seconds: 1
   - action: music_assistant.transfer_queue
     continue_on_error: true
     data:
