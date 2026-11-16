@@ -6,7 +6,7 @@
 //   type: custom:tessera-music-library
 //   entry: <Music Assistant config entry id>
 //   room: input_select.music_dashboard_room
-//   backdrop: true
+//   backdrop: false   (true lays the cover, washed, behind the page)
 const KINDS = [
   { id: 'favourites', word: 'Favourites', icon: 'mdi:heart', type: null },
   { id: 'playlist', word: 'Playlists', icon: 'mdi:playlist-music', type: 'playlist', list: 'playlists' },
@@ -20,7 +20,7 @@ const ACCENT = '#0B96D6';
 class TesseraMusicLibrary extends HTMLElement {
   setConfig(config) {
     if (!config.entry) throw new Error('entry: the Music Assistant config entry id');
-    this._config = { room: 'input_select.music_dashboard_room', backdrop: true, ...config };
+    this._config = { room: 'input_select.music_dashboard_room', backdrop: false, ...config };
     this._kind = 'playlist';
     this._query = '';
     this._items = [];
