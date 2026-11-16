@@ -1,84 +1,160 @@
-# Music rooms dashboard: Add and Remove on a room's row. Joins the room to the group of the room the dashboard controls
-# (through that group's lead: Music Assistant ignores a join to a member), or takes it out when it is already in.
-# Add it as a script with the id music_dashboard_toggle_room.
-# A room that cannot play in step with the controlled room (a screen's own speaker, on either side) gets the music
-# moved to it (music_assistant.transfer_queue) and becomes the controlled room; its button says Move here.
+# Music rooms dashboard: Add and Remove on a room's row. Add it as a script with the id music_dashboard_toggle_room.
+# - The room in charge is the Music Assistant group player (Whole House) when the controlled room plays in its queue,
+#   otherwise the lead of its group (the first of group_members).
+# - Remove takes a room out of the group; Remove on the lead hands the music to the first room left (transfer_queue)
+#   and joins the others to it, and the dashboard then controls that room.
+# - A room that cannot play in step (a screen's own speaker, on either side) gets the music moved to it (Move here).
 alias: Music dashboard – add or remove a room
-description: Joins a room to the group of the room the music dashboard controls (to that group's lead), or takes it out again
-  when it is already in. A room that cannot play in step with it (a screen's own speaker, on either side) gets the music moved
-  to it instead, and the dashboard then controls it; while nothing plays, it just becomes the controlled room. A Music Assistant
-  group player (Whole House) takes over what plays, and the dashboard then controls it.
+description: Add or Remove on a room of the music dashboard. A room joins the group the controlled room plays in (through
+  its lead, or the Music Assistant group player such as Whole House when that is what plays); a room in the group leaves it.
+  Removing the lead hands the music to the first room left and keeps the others with it. A room that cannot play in step gets
+  the music moved to it. A Music Assistant group player takes the music over. The dashboard then controls the room that plays.
 fields:
   room:
     description: The media player to add or take out.
     selector:
       entity:
         domain: media_player
+max: 10
 mode: queued
 sequence:
 - variables:
     chosen: '{{ states(''input_select.music_dashboard_room'') }}'
-    group: '{{ state_attr(states(''input_select.music_dashboard_room''), ''group_members'') or [] }}'
-    is_group: '{{ is_state_attr(room, ''mass_player_type'', ''group'') }}'
-    lead: '{{ group[0] if group | length > 1 else chosen }}'
-    groupable: '{{ ((state_attr(room, ''supported_features'') | int(0)) // 524288) % 2 == 1 and ((state_attr(lead, ''supported_features'')
-      | int(0)) // 524288) % 2 == 1 and not is_state_attr(lead, ''mass_player_type'', ''group'') }}'
+- variables:
+    owner: '{% set q = state_attr(chosen, ''active_queue'') %}{% set g = states.media_player | selectattr(''attributes.mass_player_type'',
+      ''defined'') | selectattr(''attributes.mass_player_type'', ''eq'', ''group'') | selectattr(''attributes.active_queue'',
+      ''defined'') | selectattr(''attributes.active_queue'', ''eq'', q) | map(attribute=''entity_id'') | list %}{{ g[0] if
+      q and g and is_state(g[0], [''playing'', ''paused'', ''buffering'']) else chosen }}'
+- variables:
+    grp_mode: '{{ is_state_attr(owner, ''mass_player_type'', ''group'') }}'
+- variables:
+    group: '{{ state_attr(owner if grp_mode else chosen, ''group_members'') or [] }}'
+- variables:
+    lead: '{{ owner if grp_mode else (group[0] if group | length > 1 else chosen) }}'
+    room_is_group: '{{ is_state_attr(room, ''mass_player_type'', ''group'') }}'
+- variables:
+    groupable: '{{ ((state_attr(room, ''supported_features'') | int(0)) // 524288) % 2 == 1 and (grp_mode or ((state_attr(lead,
+      ''supported_features'') | int(0)) // 524288) % 2 == 1) }}'
     lead_on: '{{ states(lead) in [''playing'', ''paused'', ''buffering''] }}'
-- condition: template
-  value_template: '{{ room != chosen and room != lead }}'
+    rest: '{{ group | reject(''eq'', lead) | list }}'
 - choose:
-  - conditions:
+  - alias: A Music Assistant group (Whole House) takes the music over
+    conditions:
     - condition: template
-      value_template: '{{ is_group }}'
+      value_template: '{{ room_is_group and room != lead }}'
     sequence:
-    - action: music_assistant.transfer_queue
-      data:
-        auto_play: true
-        source_player: '{{ lead }}'
-      target:
-        entity_id: '{{ room }}'
+    - if:
+      - condition: template
+        value_template: '{{ lead_on }}'
+      then:
+      - action: music_assistant.transfer_queue
+        continue_on_error: true
+        data:
+          auto_play: true
+          source_player: '{{ lead }}'
+        target:
+          entity_id: '{{ room }}'
     - action: input_select.select_option
       data:
         option: '{{ room }}'
       target:
         entity_id: input_select.music_dashboard_room
-  - conditions:
+  - alias: 'The Music Assistant group itself: nothing to add or remove'
+    conditions:
     - condition: template
-      value_template: '{{ room in group }}'
+      value_template: '{{ room_is_group }}'
+    sequence: []
+  - alias: 'Remove the lead: the music goes to the first room left, the others stay with it'
+    conditions:
+    - condition: template
+      value_template: '{{ not grp_mode and room == lead and rest | length > 0 }}'
     sequence:
     - action: media_player.unjoin
+      continue_on_error: true
       target:
-        entity_id: '{{ room }}'
-  default:
-  - choose:
-    - conditions:
-      - condition: template
-        value_template: '{{ groupable }}'
-      sequence:
-      - action: media_player.join
-        data:
-          group_members:
-          - '{{ room }}'
-        target:
-          entity_id: '{{ lead }}'
-    - conditions:
-      - condition: template
-        value_template: '{{ not lead_on }}'
-      sequence:
-      - action: input_select.select_option
-        data:
-          option: '{{ room }}'
-        target:
-          entity_id: input_select.music_dashboard_room
-    default:
+        entity_id: '{{ rest }}'
+    - delay:
+        seconds: 1
     - action: music_assistant.transfer_queue
+      continue_on_error: true
       data:
         auto_play: true
         source_player: '{{ lead }}'
       target:
+        entity_id: '{{ rest[0] }}'
+    - if:
+      - condition: template
+        value_template: '{{ rest | length > 1 }}'
+      then:
+      - delay:
+          seconds: 2
+      - action: media_player.join
+        continue_on_error: true
+        data:
+          group_members: '{{ rest[1:] }}'
+        target:
+          entity_id: '{{ rest[0] }}'
+    - action: input_select.select_option
+      data:
+        option: '{{ rest[0] }}'
+      target:
+        entity_id: input_select.music_dashboard_room
+  - alias: Remove a room of the group
+    conditions:
+    - condition: template
+      value_template: '{{ room in group and room != lead }}'
+    sequence:
+    - action: media_player.unjoin
+      continue_on_error: true
+      target:
         entity_id: '{{ room }}'
+    - if:
+      - condition: template
+        value_template: '{{ room == chosen }}'
+      then:
+      - action: input_select.select_option
+        data:
+          option: '{{ lead }}'
+        target:
+          entity_id: input_select.music_dashboard_room
+  - alias: 'The controlled room alone: nothing to remove'
+    conditions:
+    - condition: template
+      value_template: '{{ room == chosen or room == lead }}'
+    sequence: []
+  - alias: 'Nothing plays: control that room instead'
+    conditions:
+    - condition: template
+      value_template: '{{ not lead_on }}'
+    sequence:
     - action: input_select.select_option
       data:
         option: '{{ room }}'
       target:
         entity_id: input_select.music_dashboard_room
+  - alias: Add a room that plays in step
+    conditions:
+    - condition: template
+      value_template: '{{ groupable }}'
+    sequence:
+    - action: media_player.join
+      continue_on_error: true
+      data:
+        group_members:
+        - '{{ room }}'
+      target:
+        entity_id: '{{ lead }}'
+  default:
+  - action: music_assistant.transfer_queue
+    alias: 'It cannot play in step: the music moves to it'
+    continue_on_error: true
+    data:
+      auto_play: true
+      source_player: '{{ lead }}'
+    target:
+      entity_id: '{{ room }}'
+  - action: input_select.select_option
+    data:
+      option: '{{ room }}'
+    target:
+      entity_id: input_select.music_dashboard_room

@@ -1,100 +1,106 @@
-# Music rooms: add rooms to what a player plays, only where they can play together.
+# Music rooms: add rooms to what a player plays.
 #
-# - A room that can group (Home Assistant's grouping: a Cast, a Sonos) joins the lead of the player's group (the first
-#   of its group_members): Music Assistant ignores a join to a player that is a member of another player's group.
-# - A Music Assistant group player (Whole House) cannot be joined: what plays moves to it instead
-#   (music_assistant.transfer_queue).
-# - A room of the playing Music Assistant group that already plays is left as it is.
-# - A room that cannot play in step with the one that plays (a screen's own speaker, on either side) gets the music
-#   moved to it (music_assistant.transfer_queue), and the other ticked rooms that can group join it there. (Starting
-#   the same item on both apart is no help: a Spotify account that allows one stream at a time stops one of them.)
+# - The room in charge is the Music Assistant group player (Whole House) when the player plays in its queue, otherwise
+#   the lead of the player's group (the first of its group_members): Music Assistant ignores a join to a member.
+# - A room that can group (a Cast, a Sonos) joins it in step.
+# - A Music Assistant group player ticked takes the music over (music_assistant.transfer_queue).
+# - A room that cannot play in step (a screen's own speaker, on either side) gets the music moved to it, and the other
+#   ticked rooms that can group join it there. (A copy on both is no help: a Spotify account that allows one stream at
+#   a time stops one of them.)
 #
 # Add it in Home Assistant as a script with the id music_rooms_join (Settings, Automations & scenes, Scripts, Add
 # script, Edit in YAML, paste this), then give each screen `join_script: script.music_rooms_join` under `music_rooms:`.
 alias: Music rooms – join rooms
-description: >-
-  Adds rooms to what a player plays, only where they can play together: a room that can group joins the group through
-  its lead (the first of group_members); a Music Assistant group player (Whole House) takes the music over; a room of
-  the playing Music Assistant group that already plays is left as it is. A room that cannot group is not added.
-mode: queued
-max: 20
+description: 'Adds rooms to what a player plays: a room that can group with it (a Cast or Sonos speaker) joins the group through
+  its lead (the first of group_members); a Music Assistant group player (Whole House) takes the music over; a room of the
+  playing Music Assistant group that already plays is left as it is. A room that cannot play in step with it (a screen''s
+  own speaker, or any room while a screen''s speaker plays) gets the music moved to it (music_assistant.transfer_queue), and
+  the other ticked rooms that can group join it there.'
 fields:
-  player:
-    description: The room that plays (its lead, a member, or a Music Assistant group player).
-    selector:
-      entity:
-        domain: media_player
   members:
     description: The rooms to add.
     selector:
       entity:
         domain: media_player
         multiple: true
+  player:
+    description: The room that plays (its lead, a member, or a Music Assistant group player).
+    selector:
+      entity:
+        domain: media_player
+max: 20
+mode: queued
 sequence:
+- variables:
+    owner: '{% set q = state_attr(player, ''active_queue'') %}{% set g = states.media_player | selectattr(''attributes.mass_player_type'',
+      ''defined'') | selectattr(''attributes.mass_player_type'', ''eq'', ''group'') | selectattr(''attributes.active_queue'',
+      ''defined'') | selectattr(''attributes.active_queue'', ''eq'', q) | map(attribute=''entity_id'') | list %}{{ g[0] if
+      q and g and is_state(g[0], [''playing'', ''paused'', ''buffering'']) else player }}'
+- variables:
+    group: '{{ state_attr(owner, ''group_members'') or [] }}'
+    player_group: '{{ is_state_attr(owner, ''mass_player_type'', ''group'') }}'
+- variables:
+    lead: '{{ owner if player_group else (group[0] if group | length > 1 else player) }}'
+- variables:
+    asked: '{{ (members if members is list else [members]) | reject(''eq'', lead) | reject(''eq'', player) | reject(''eq'',
+      owner) | list }}'
+- variables:
+    groups: '{{ asked | select(''is_state_attr'', ''mass_player_type'', ''group'') | list }}'
+- variables:
+    playing_in_group: '{{ (group if player_group else []) | select(''is_state'', [''playing'', ''paused'', ''buffering''])
+      | list }}'
+- variables:
+    rest: '{{ asked | reject(''in'', groups) | reject(''in'', playing_in_group) | list }}'
+- variables:
+    joinable: '{% set ns = namespace(out=[]) %}{% if not player_group and ((state_attr(lead, ''supported_features'') | int(0))
+      // 524288) % 2 == 1 %}{% for r in rest %}{% if ((state_attr(r, ''supported_features'') | int(0)) // 524288) % 2 == 1
+      %}{% set ns.out = ns.out + [r] %}{% endif %}{% endfor %}{% endif %}{{ ns.out }}'
+- variables:
+    lead_groups: '{{ not player_group and ((state_attr(lead, ''supported_features'') | int(0)) // 524288) % 2 == 1 }}'
+    moves: '{{ rest | reject(''in'', joinable) | list }}'
+- repeat:
+    for_each: '{{ groups }}'
+    sequence:
+    - action: music_assistant.transfer_queue
+      continue_on_error: true
+      data:
+        auto_play: true
+        source_player: '{{ lead }}'
+      target:
+        entity_id: '{{ repeat.item }}'
+- if:
+  - condition: template
+    value_template: '{{ joinable | length > 0 }}'
+  then:
+  - action: media_player.join
+    continue_on_error: true
+    data:
+      group_members: '{{ joinable }}'
+    target:
+      entity_id: '{{ lead }}'
+- if:
+  - condition: template
+    value_template: '{{ not player_group and groups | length == 0 and joinable | length == 0 and moves | length > 0 and states(lead)
+      in [''playing'', ''paused'', ''buffering''] }}'
+  then:
+  - action: music_assistant.transfer_queue
+    continue_on_error: true
+    data:
+      auto_play: true
+      source_player: '{{ lead }}'
+    target:
+      entity_id: '{{ moves[0] }}'
   - variables:
-      group: "{{ state_attr(player, 'group_members') or [] }}"
-      player_group: "{{ is_state_attr(player, 'mass_player_type', 'group') }}"
-  - variables:
-      lead: "{{ player if player_group else (group[0] if group | length > 1 else player) }}"
-  - variables:
-      asked: "{{ (members if members is list else [members]) | reject('eq', lead) | reject('eq', player) | list }}"
-  - variables:
-      groups: "{{ asked | select('is_state_attr', 'mass_player_type', 'group') | list }}"
-  - variables:
-      playing_in_group: "{{ (group if player_group else []) | select('is_state', ['playing', 'paused', 'buffering']) | list }}"
-  - variables:
-      rest: "{{ asked | reject('in', groups) | reject('in', playing_in_group) | list }}"
-  # 524288 is MediaPlayerEntityFeature.GROUPING: both the lead and the room must have it.
-  - variables:
-      joinable: >-
-        {% set ns = namespace(out=[]) %}{% if not player_group and ((state_attr(lead, 'supported_features') | int(0)) // 524288) % 2 == 1 %}{% for r in rest %}{% if ((state_attr(r, 'supported_features') | int(0)) // 524288) % 2 == 1 %}{% set ns.out = ns.out + [r] %}{% endif %}{% endfor %}{% endif %}{{ ns.out }}
-  - variables:
-      lead_groups: "{{ not player_group and ((state_attr(lead, 'supported_features') | int(0)) // 524288) % 2 == 1 }}"
-      moves: "{{ rest | reject('in', joinable) | list }}"
-  - repeat:
-      for_each: "{{ groups }}"
-      sequence:
-        - action: music_assistant.transfer_queue
-          target:
-            entity_id: "{{ repeat.item }}"
-          data:
-            source_player: "{{ lead }}"
-            auto_play: true
-          continue_on_error: true
+      more: '{% set ns = namespace(out=[]) %}{% if ((state_attr(moves[0], ''supported_features'') | int(0)) // 524288) % 2
+        == 1 %}{% for r in moves[1:] %}{% if ((state_attr(r, ''supported_features'') | int(0)) // 524288) % 2 == 1 %}{% set
+        ns.out = ns.out + [r] %}{% endif %}{% endfor %}{% endif %}{{ ns.out }}'
   - if:
-      - condition: template
-        value_template: "{{ joinable | length > 0 }}"
+    - condition: template
+      value_template: '{{ more | length > 0 }}'
     then:
-      - action: media_player.join
-        target:
-          entity_id: "{{ lead }}"
-        data:
-          group_members: "{{ joinable }}"
-        continue_on_error: true
-  # Nothing could join: the music moves to the first room ticked; the others that can group join it there.
-  - if:
-      - condition: template
-        value_template: >-
-          {{ not player_group and groups | length == 0 and joinable | length == 0 and moves | length > 0
-             and states(lead) in ['playing', 'paused', 'buffering'] }}
-    then:
-      - action: music_assistant.transfer_queue
-        target:
-          entity_id: "{{ moves[0] }}"
-        data:
-          source_player: "{{ lead }}"
-          auto_play: true
-        continue_on_error: true
-      - variables:
-          more: >-
-            {% set ns = namespace(out=[]) %}{% if ((state_attr(moves[0], 'supported_features') | int(0)) // 524288) % 2 == 1 %}{% for r in moves[1:] %}{% if ((state_attr(r, 'supported_features') | int(0)) // 524288) % 2 == 1 %}{% set ns.out = ns.out + [r] %}{% endif %}{% endfor %}{% endif %}{{ ns.out }}
-      - if:
-          - condition: template
-            value_template: "{{ more | length > 0 }}"
-        then:
-          - action: media_player.join
-            target:
-              entity_id: "{{ moves[0] }}"
-            data:
-              group_members: "{{ more }}"
-            continue_on_error: true
+    - action: media_player.join
+      continue_on_error: true
+      data:
+        group_members: '{{ more }}'
+      target:
+        entity_id: '{{ moves[0] }}'
