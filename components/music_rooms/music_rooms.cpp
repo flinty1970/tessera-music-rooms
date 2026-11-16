@@ -62,6 +62,7 @@ struct Room {
   char artist[49] = "";
   int volume = -1;       // 0 to 100, -1 when it has none
   bool group = false;    // a Music Assistant group (mass_player_type "group"): it plays alone, never joined to others
+  bool sync = false;     // it can be put together with others in step (media_player.join): Home Assistant's GROUPING
   bool used() const { return id[0] != '\0'; }
 };
 
@@ -122,9 +123,31 @@ class Players : public tessera::InPsram {
   }
   int room_count() const { return __builtin_popcount(used_mask()); }
   void choose(uint16_t rooms) {
+    const uint16_t before = chosen();
     rooms &= used_mask();
     plugin_->set_chosen(index_, rooms ? rooms : 1);
     note_ = Note::NONE;
+    follow(before);
+  }
+
+  // While the first room plays, a room ticked joins it at once and one unticked leaves, so what plays follows the
+  // ticks; a room that cannot join gets the next item. While nothing plays, the ticks wait for the next item.
+  void follow(uint16_t before) {
+    const uint16_t now = chosen();
+    const int lead = lead_slot();
+    if (!(before & (1u << lead)) || strcmp(rooms_[lead].state, "playing")) return;
+    uint16_t joined = plugin_->joined(index_);
+    const uint16_t gone_out = before & ~now & joined;
+    for (int i = 0; i < SLOTS; ++i)
+      if ((gone_out & (1u << i)) && rooms_[i].used() && !gone(rooms_[i].state))
+        tessera::action("media_player.unjoin", rooms_[i].id);
+    joined &= ~gone_out;
+    uint16_t come = 0;
+    if (joinable(lead))
+      for (int i = 0; i < SLOTS; ++i)
+        if ((now & ~before & (1u << i)) && i != lead && joinable(i) && !gone(rooms_[i].state)) come |= 1u << i;
+    if (come && join(lead, come)) joined |= come;
+    plugin_->set_joined(index_, joined);
   }
   // "Kitchen", "Kitchen + 2" or "All rooms".
   std::string rooms_text() const {
@@ -164,26 +187,20 @@ class Players : public tessera::InPsram {
     int lead = 0;
     while (!(rooms & (1u << lead))) ++lead;
     const uint16_t others = rooms & ~(1u << lead);
-    // A Music Assistant group among the rooms is joined to nothing and nothing is joined to it: each room then gets
-    // the item on its own, not in step, where rooms alone are joined to the first and play together.
-    bool groups = false;
-    for (int i = 0; i < SLOTS; ++i) if ((rooms & (1u << i)) && rooms_[i].group) groups = true;
-    const uint16_t together = groups ? 0 : others;
+    // The rooms that can join the first one play in step with it; the others (a Music Assistant group, a player that
+    // cannot be joined, or every room when the first cannot lead) get the item on their own, not in step.
+    const uint16_t together = joinable(lead) ? (others & joinable_mask()) : 0;
+    const uint16_t alone = others & ~together;
     bool sent = true;
     const uint16_t leave = plugin_->joined(index_) & ~together & ~(1u << lead);
     for (int i = 0; i < SLOTS; ++i)
       if ((leave & (1u << i)) && rooms_[i].used() && !gone(rooms_[i].state))
         tessera::action("media_player.unjoin", rooms_[i].id);
-    if (together) {
-      JsonDocument join;
-      JsonArray members = join["group_members"].to<JsonArray>();
-      for (int i = 0; i < SLOTS; ++i) if (together & (1u << i)) members.add(rooms_[i].id);
-      sent = tessera::action("media_player.join", rooms_[lead].id, join.as<JsonVariantConst>());
-    }
+    if (together) sent = join(lead, together);
     plugin_->set_joined(index_, together);
-    // Home Assistant's play_media with the item's own Music Assistant address and kind: on the first room, and with a
-    // group among them on every room. An address the app cut (a Spotify artist's) plays by name and artist through
-    // Music Assistant's own play_media, which finds the item itself.
+    // Home Assistant's play_media with the item's own Music Assistant address and kind: on the first room, and on each
+    // room that plays alone. An address the app cut (a Spotify artist's) plays by name and artist through Music
+    // Assistant's own play_media, which finds the item itself.
     const bool whole = uri[0] && strlen(uri) < WHOLE;
     JsonDocument item;
     if (whole) {
@@ -195,7 +212,7 @@ class Players : public tessera::InPsram {
       if (artist[0] && (!strcmp(type, "track") || !strcmp(type, "album"))) item["artist"] = artist;
     }
     const char *service = whole ? "media_player.play_media" : "music_assistant.play_media";
-    const uint16_t give = groups ? rooms : (1u << lead);
+    const uint16_t give = alone | (1u << lead);
     for (int i = 0; i < SLOTS; ++i)
       if (give & (1u << i)) sent = tessera::action(service, rooms_[i].id, item.as<JsonVariantConst>()) && sent;
     note_ = sent ? Note::STARTING : Note::NOT_SENT;
@@ -203,6 +220,20 @@ class Players : public tessera::InPsram {
     put(started_title_, rooms_[lead].title);
     put(started_state_, rooms_[lead].state);
     return sent;
+  }
+
+  bool joinable(int slot) const { return rooms_[slot].used() && rooms_[slot].sync && !rooms_[slot].group; }
+  uint16_t joinable_mask() const {
+    uint16_t mask = 0;
+    for (int i = 0; i < SLOTS; ++i) if (joinable(i)) mask |= 1u << i;
+    return mask;
+  }
+  // media_player.join: these rooms play what the first plays, in step with it.
+  bool join(int lead, uint16_t rooms) {
+    JsonDocument data;
+    JsonArray members = data["group_members"].to<JsonArray>();
+    for (int i = 0; i < SLOTS; ++i) if (rooms & (1u << i)) members.add(rooms_[i].id);
+    return tessera::action("media_player.join", rooms_[lead].id, data.as<JsonVariantConst>());
   }
 
   // The keys of Now playing, on the first room (a group's lead plays for all of it).
@@ -252,6 +283,9 @@ class Players : public tessera::InPsram {
     put(room.artist, a["media_artist"] | "");
     room.volume = a["volume_level"].is<float>() ? static_cast<int>(a["volume_level"].as<float>() * 100.0f + 0.5f) : -1;
     room.group = !strcmp(a["mass_player_type"] | "", "group");
+    // MediaPlayerEntityFeature.GROUPING: Music Assistant can join it to another player (a Cast, a Sonos), where a
+    // player it reaches through another integration (a screen's own speaker) plays alone.
+    room.sync = ((a["supported_features"] | 0u) & 524288u) != 0;
   }
 
   MusicRooms *plugin_;

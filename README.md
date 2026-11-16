@@ -35,11 +35,14 @@ library and play what you tap there, with Now playing, play and pause, skip and 
 
 ## How it plays
 
-- Picking a room never moves or stops what already plays anywhere. Only a tap on an item plays.
+- With Several, a room ticked while the first room plays joins it at once, in step, and a room unticked leaves; a
+  room that cannot be joined (a screen's own speaker) waits for the next item. With nothing playing, the ticks wait
+  for the next item. Picking a room never stops what plays.
 - In one room: Home Assistant's `media_player.play_media` on that player, with the item's own Music Assistant address
   and kind, also while another room plays something else.
-- In several rooms: the other rooms join the first one first (`media_player.join`), which then plays the item for all
-  of them. Rooms this tile put together before and that are no longer ticked leave the group first
+- In several rooms: the other rooms that can play in step (Home Assistant's grouping: a Cast, a Sonos) join the first
+  one first (`media_player.join`), which then plays the item for all of them; a room that cannot (a screen's own
+  speaker, a Music Assistant group) gets the item on its own. Rooms this tile put together before and that are no longer ticked leave the group first
   (`media_player.unjoin`), so it plays in exactly the rooms ticked.
 - The keys of Now playing act on the first room, which leads a group.
 

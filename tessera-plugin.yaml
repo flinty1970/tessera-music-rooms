@@ -3,7 +3,7 @@
 # its keys. Every name, label and hint below is a key into translations/<language>.json, part "app". docs/MANIFEST.md
 # in the plugins repository has every field.
 id: music_rooms
-version: 0.6.0
+version: 0.7.0
 # 0.15: options of kind entity (the rooms); 0.17: the cover of the tile's own player by name (cover:).
 api: "0.17"
 icon: speaker-multiple
@@ -45,19 +45,19 @@ tiles:
     # picked.
     domains: [media_player]
     has_attributes: [mass_player_type]
-    attributes: [media_title, media_artist, volume_level]
+    attributes: [media_title, media_artist, volume_level, supported_features]
     example: tile_example
     preview: { title: "{name}", value: "{media_title}" }
     options:
-      - { id: room_1, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type], label: room_1, hint: room_hint }
-      - { id: room_2, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type], label: room_2 }
-      - { id: room_3, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type], label: room_3 }
-      - { id: room_4, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type], label: room_4 }
-      - { id: room_5, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type], label: room_5 }
-      - { id: room_6, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type], label: room_6 }
-      - { id: room_7, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type], label: room_7 }
-      - { id: room_8, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type], label: room_8 }
-      - { id: room_9, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type], label: room_9 }
+      - { id: room_1, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type, supported_features], label: room_1, hint: room_hint }
+      - { id: room_2, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type, supported_features], label: room_2 }
+      - { id: room_3, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type, supported_features], label: room_3 }
+      - { id: room_4, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type, supported_features], label: room_4 }
+      - { id: room_5, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type, supported_features], label: room_5 }
+      - { id: room_6, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type, supported_features], label: room_6 }
+      - { id: room_7, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type, supported_features], label: room_7 }
+      - { id: room_8, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type, supported_features], label: room_8 }
+      - { id: room_9, kind: entity, domains: [media_player], attributes: [media_title, media_artist, volume_level, mass_player_type, supported_features], label: room_9 }
       - { id: rooms_at_once, kind: choice, label: rooms_at_once, hint: rooms_at_once_hint, default: one,
           choices: [{ value: one, label: rooms_one }, { value: several, label: rooms_several }] }
       - { id: library, kind: text, label: library, hint: library_hint }

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0
+
+- **A room ticked while music plays joins it at once**, in step (a Cast, a Google display, the stereo), and one
+  unticked leaves. Before, the ticks waited for the next item.
+- A room that cannot play in step with the others (a screen's own speaker) gets the item on its own, where before it
+  stayed silent.
+
 ## 0.6.0
 
 - **Search finds music outside your library**: Spotify and Music Assistant's other providers, not only what you
