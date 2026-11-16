@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.1
+
+- A room unticked while music plays now always leaves the group, also when it was joined from another screen, the
+  dashboard, or before the screen started again.
+- Fewer questions to Music Assistant (the room the keys act on every 10 seconds at most, another every 30), so a
+  screen that plays music on its own speaker keeps more of its Wi-Fi for the music.
+
 ## 0.12.0
 
 - **The song's bar** on Now playing: how far it is and how long, moving while it plays.

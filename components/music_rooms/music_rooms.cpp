@@ -202,10 +202,16 @@ class Players : public tessera::InPsram {
     const int lead = lead_of(kept);
     if (strcmp(rooms_[lead].state, "playing")) return;
     uint16_t joined = plugin_->joined(index_);
-    const uint16_t gone_out = before & ~now & joined;
+    // A room unticked leaves the group: one this tile joined, and one that plays and could be in it (joined from
+    // another screen, the dashboard, or before the screen started again). Unjoining a room that plays alone does nothing.
+    uint16_t gone_out = 0;
+    for (int i = 0; i < SLOTS; ++i) {
+      if (!(before & ~now & (1u << i)) || i == lead || !rooms_[i].used() || gone(rooms_[i].state)) continue;
+      const bool on = !strcmp(rooms_[i].state, "playing") || !strcmp(rooms_[i].state, "paused");
+      if ((joined & (1u << i)) || (on && joinable(i))) gone_out |= 1u << i;
+    }
     for (int i = 0; i < SLOTS; ++i)
-      if ((gone_out & (1u << i)) && rooms_[i].used() && !gone(rooms_[i].state))
-        tessera::action("media_player.unjoin", rooms_[i].id);
+      if (gone_out & (1u << i)) tessera::action("media_player.unjoin", rooms_[i].id);
     joined &= ~gone_out;
     uint16_t come = 0;
     if (joinable(lead))
@@ -363,9 +369,12 @@ class Players : public tessera::InPsram {
       if (!r.used() || gone(r.state)) continue;
       if (strcmp(r.state, "playing") && strcmp(r.state, "paused") && strcmp(r.state, "buffering")) continue;
       if (r.asked && now < r.asked_at + 10) continue;  // its answer is still on its way
-      const uint32_t gap = i == lead ? 4 : 15;
+      // Few questions: each goes through Home Assistant and the app to the screen, whose Wi-Fi also carries its own
+      // speaker's music. The room the keys act on every 10 seconds at most when Home Assistant heard something new
+      // of it, another room every 30, each at least every 2 minutes; a start or a stop at once.
+      const uint32_t gap = i == lead ? 10 : 30;
       const bool due = !r.asked_at || strcmp(r.asked_state, r.state) ||
-                       (r.updated != r.asked_updated && now >= r.asked_at + gap) || now >= r.asked_at + 60;
+                       (r.updated != r.asked_updated && now >= r.asked_at + gap) || now >= r.asked_at + 120;
       if (!due) continue;
       JsonDocument request;
       request["ask"] = "call_service:music_assistant.get_queue";
