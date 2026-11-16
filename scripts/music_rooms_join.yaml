@@ -5,8 +5,9 @@
 # - A Music Assistant group player (Whole House) cannot be joined: what plays moves to it instead
 #   (music_assistant.transfer_queue).
 # - A room of the playing Music Assistant group that already plays is left as it is.
-# - A room that cannot group (a screen's own speaker) is not added: the screen greys it out and says why. (Starting the
-#   same item on it apart is no help: a Spotify account that allows one stream at a time stops on one of them.)
+# - A room that cannot play in step with the one that plays (a screen's own speaker, on either side) gets the music
+#   moved to it (music_assistant.transfer_queue), and the other ticked rooms that can group join it there. (Starting
+#   the same item on both apart is no help: a Spotify account that allows one stream at a time stops one of them.)
 #
 # Add it in Home Assistant as a script with the id music_rooms_join (Settings, Automations & scenes, Scripts, Add
 # script, Edit in YAML, paste this), then give each screen `join_script: script.music_rooms_join` under `music_rooms:`.
@@ -47,6 +48,9 @@ sequence:
   - variables:
       joinable: >-
         {% set ns = namespace(out=[]) %}{% if not player_group and ((state_attr(lead, 'supported_features') | int(0)) // 524288) % 2 == 1 %}{% for r in rest %}{% if ((state_attr(r, 'supported_features') | int(0)) // 524288) % 2 == 1 %}{% set ns.out = ns.out + [r] %}{% endif %}{% endfor %}{% endif %}{{ ns.out }}
+  - variables:
+      lead_groups: "{{ not player_group and ((state_attr(lead, 'supported_features') | int(0)) // 524288) % 2 == 1 }}"
+      moves: "{{ rest | reject('in', joinable) | list }}"
   - repeat:
       for_each: "{{ groups }}"
       sequence:
@@ -67,3 +71,30 @@ sequence:
         data:
           group_members: "{{ joinable }}"
         continue_on_error: true
+  # Nothing could join: the music moves to the first room ticked; the others that can group join it there.
+  - if:
+      - condition: template
+        value_template: >-
+          {{ not player_group and groups | length == 0 and joinable | length == 0 and moves | length > 0
+             and states(lead) in ['playing', 'paused', 'buffering'] }}
+    then:
+      - action: music_assistant.transfer_queue
+        target:
+          entity_id: "{{ moves[0] }}"
+        data:
+          source_player: "{{ lead }}"
+          auto_play: true
+        continue_on_error: true
+      - variables:
+          more: >-
+            {% set ns = namespace(out=[]) %}{% if ((state_attr(moves[0], 'supported_features') | int(0)) // 524288) % 2 == 1 %}{% for r in moves[1:] %}{% if ((state_attr(r, 'supported_features') | int(0)) // 524288) % 2 == 1 %}{% set ns.out = ns.out + [r] %}{% endif %}{% endfor %}{% endif %}{{ ns.out }}
+      - if:
+          - condition: template
+            value_template: "{{ more | length > 0 }}"
+        then:
+          - action: media_player.join
+            target:
+              entity_id: "{{ moves[0] }}"
+            data:
+              group_members: "{{ more }}"
+            continue_on_error: true

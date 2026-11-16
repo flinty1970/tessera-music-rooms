@@ -46,7 +46,7 @@ class MusicRooms : public Component, public tessera::Plugin {
   const char *join_script() const { return join_script_.c_str(); }
 
   // A popup: this room cannot play together with what plays in that one.
-  void explain(const char *room, const char *lead);
+  void explain(const char *room, const char *lead, bool moved);
 
   MusicCard *card_ = nullptr;  // the card that is open, to hand it the library's answers
 

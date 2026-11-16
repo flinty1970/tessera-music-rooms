@@ -49,7 +49,7 @@ music_rooms:
 | Script | What it does | Without it |
 |---|---|---|
 | `music_rooms_play` (`scripts/music_rooms_play.yaml`) | Plays a Spotify playlist or artist exactly: the app gives a plugin 48 characters of a text, so the screen sends the start of the address, the name and the kind, and the script plays the one search result whose address starts so. | Such an item plays by its name, which another item may share. |
-| `music_rooms_join` (`scripts/music_rooms_join.yaml`) | Joins the rooms you tick to the lead of the group the controlled room is in (the first of its `group_members`): Music Assistant ignores a join to a room that is a member of another room's group, and the screen cannot see the groups. A Music Assistant group player (Whole House) ticked while music plays takes the music over (`music_assistant.transfer_queue`). A room that cannot group is never added. | A room ticked while the controlled room is a member of another room's group is not joined, and a Music Assistant group (Whole House) ticked while music plays waits for the next item. |
+| `music_rooms_join` (`scripts/music_rooms_join.yaml`) | Joins the rooms you tick to the lead of the group the controlled room is in (the first of its `group_members`): Music Assistant ignores a join to a room that is a member of another room's group, and the screen cannot see the groups. A Music Assistant group player (Whole House) ticked while music plays takes the music over, and so does a room that cannot play in step with the one that plays (`music_assistant.transfer_queue`). | A room ticked while the controlled room is a member of another room's group is not joined, and a Music Assistant group (Whole House) ticked while music plays waits for the next item. |
 
 Both run in Home Assistant with the screen's own permission to perform actions (`script.turn_on`). A screen must be
 allowed to perform Home Assistant actions (Settings, Devices & services, ESPHome, the screen, Configure).
@@ -71,9 +71,11 @@ volume, the groups in colour, and the library and search. See `dashboard/README.
   another the other account and a third the radio.
 - The rooms key at the top opens **Rooms**: a tap adds a room or takes it out, and **All rooms** picks every room that
   can play with the one that plays. A room Home Assistant cannot reach is marked Unavailable.
-- Only rooms that can play together are grouped. While a room plays, a room that cannot join it shows grey with
-  **Can't join**: a screen's own speaker, or any room while the one that plays cannot group. A tap on it opens a popup
-  that says why; a Music Assistant group (Whole House) can always take the music over.
+- Only rooms that can play in step are grouped. While a room plays, a room that cannot play in step with it (a
+  screen's own speaker, on either side) says **Moves here**: a tap moves the music to it (with the join script,
+  `music_assistant.transfer_queue`) and a popup says why it moved instead of joining; the keys then act on that room.
+  From the Office screen's speaker to the Stereo and back, say. Without the join script such a room is grey,
+  **Can't join**. A Music Assistant group (Whole House) can always take the music over.
 - **Library** shows Favourites, Playlists, Radio, Albums, Artists, Tracks and Podcasts as large keys. A kind's items
   turn on a wheel, like the alarm clock's time: swipe it, and **Play** at the top plays the one in the middle, in the
   rooms shown beside it. More come as you near the end. Now playing then says Starting and then what plays, or Did
@@ -89,7 +91,7 @@ volume, the groups in colour, and the library and search. See `dashboard/README.
 ## How it plays
 
 - With Several, a room ticked while the first room plays joins it at once, in step, and a room unticked leaves; a
-  room that cannot be joined (a screen's own speaker) is greyed and cannot be ticked while another room plays. With nothing playing, the ticks wait
+  room that cannot be joined (a screen's own speaker) gets the music moved to it instead. With nothing playing, the ticks wait
   for the next item. Picking a room never stops what plays.
 - In one room: Home Assistant's `media_player.play_media` on that player, with the item's own Music Assistant address
   and kind, also while another room plays something else.
@@ -116,4 +118,4 @@ volume, the groups in colour, and the library and search. See `dashboard/README.
 - A Music Assistant group ticked together with other rooms is not joined to them: each gets the item on its own, so
   they play the same thing but not exactly in step. A group ticked alone plays in sync as always.
 - A Spotify account that allows one stream at a time cannot play the same thing on two rooms apart: the second stops
-  the first. That is why a room that cannot group is not added to what plays.
+  the first. That is why a room that cannot group gets the music moved to it, not a copy.

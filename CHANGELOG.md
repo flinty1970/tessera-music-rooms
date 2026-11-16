@@ -2,10 +2,12 @@
 
 ## 0.13.0
 
-- **Rooms that cannot play along are greyed** in Rooms ("Can't join"): a screen's own speaker, while a group of Google
-  and Cast speakers plays. A tap on one says why, in a popup.
-- A tap on a room while nothing plays in a speaker that cannot be grouped switches to that room, instead of adding
-  one that could never play with it. **All rooms** ticks only the rooms that can play together.
+- **Switching between a screen's speaker and another room works**: a room that cannot play in step with the one that
+  plays (a screen's own speaker, on either side) says "Moves here", and a tap moves the music to it, with a popup that
+  says why. The keys then act on that room. Needs the updated join script (`scripts/music_rooms_join.yaml`).
+- Without the join script such a room is greyed ("Can't join"), and a tap says why.
+- A tap on a room while nothing plays in a speaker that cannot be grouped switches to that room. **All rooms** ticks
+  only the rooms that can play together.
 - Needs Tessera's plugin API 0.18 (popups).
 
 ## 0.12.5
