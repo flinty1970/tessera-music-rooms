@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- The library's items turn on a wheel, as the alarm clock's time does: swipe through them, and the large Play key
+  under the wheel plays the one in the middle (with its artist, where it has one). More load as you reach the end.
+- The kinds (Favourites, Playlists, Radio, ...) are a grid of large keys, all on one page.
+- A small screen without room for the wheel keeps the list, which no longer runs into the page keys.
+
 ## 0.3.1
 
 - Fixed: on a screen with many pages, the tile showed "Choose a player" although its player was set.

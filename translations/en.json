@@ -27,7 +27,9 @@
     "not_started": "Did not start",
     "idle": "Nothing playing",
     "page": "Page {n}",
-    "volume": "{n} %"
+    "volume": "{n} %",
+    "play": "Play",
+    "play_by": "Play · {artist}"
   },
   "app": {
     "name": "Music rooms",

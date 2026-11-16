@@ -333,6 +333,7 @@ class MusicCard : public tessera::Card {
   explicit MusicCard(MusicRooms *plugin) : plugin_(plugin) {}
   ~MusicCard() override {
     if (plugin_->card_ == this) plugin_->card_ = nullptr;
+    delete shelf_;
   }
 
   void open(const tessera::CardContext &c) override {
@@ -413,7 +414,7 @@ class MusicCard : public tessera::Card {
 
     // The lists: as many rows as fit between the head and the pager.
     const int row_gap = ui::px(6);
-    rows_ = std::max(2, std::min(ROWS, (height_ - 2 * key_ - 2 * gap_ + row_gap) / (key_ + row_gap)));
+    rows_ = std::max(1, std::min(ROWS, (height_ - 2 * key_ - 2 * gap_ + row_gap) / (key_ + row_gap)));
     for (int i = 0; i < rows_; ++i) {
       Row &r = row_[i];
       r.y = key_ + gap_ + i * (key_ + row_gap);
@@ -439,6 +440,46 @@ class MusicCard : public tessera::Card {
     lv_obj_set_style_text_align(note_, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_pos(note_, 0, key_ + gap_ + ui::px(16));
 
+    // The kinds: a grid of keys, each its icon and its word, laid out by paint_kinds for as many as it shows.
+    for (int i = 0; i < KIND_KEYS; ++i) {
+      kind_key_[i].box = button(0, 0, 1, 1, theme::RAISED);
+      kind_key_[i].icon = glyph(kind_key_[i].box, ICON_MUSIC, theme::ACCENT);
+      kind_key_[i].text = ui::label(kind_key_[i].box, Font::BODY_LARGE, theme::INK);
+      lv_obj_set_style_text_align(kind_key_[i].text, LV_TEXT_ALIGN_CENTER, 0);
+      hide(kind_key_[i].box, true);
+    }
+#if LV_USE_ROLLER
+    // The library's items on a wheel, as the alarm clock's time: the chosen one in the middle, its neighbours above
+    // and below; a swipe turns it, the Play key under it plays the one in the middle. Its items live in PSRAM.
+    shelf_ = new Shelf();
+    const int wheel_y = key_ + gap_, play_h = key_;
+    const int wheel_h = height_ - wheel_y - gap_ - play_h - gap_;
+    if (shelf_ && wheel_h >= ui::mm(15)) {
+      Font face = Font::BODY_LARGE;
+      for (Font f : {Font::TITLE})
+        if (5 * ui::line_height(f) + 4 * ui::px(10) <= wheel_h) face = f;
+      wheel_ = lv_roller_create(parent_);
+      lv_roller_set_options(wheel_, " ", LV_ROLLER_MODE_NORMAL);
+      ui::set_font(wheel_, face);
+      lv_obj_set_style_text_font(wheel_, lv_obj_get_style_text_font(wheel_, LV_PART_MAIN), LV_PART_SELECTED);
+      lv_obj_set_style_text_align(wheel_, LV_TEXT_ALIGN_CENTER, 0);
+      lv_obj_set_style_text_line_space(wheel_, ui::px(10), 0);
+      lv_obj_set_style_border_width(wheel_, 0, 0);
+      lv_obj_set_style_radius(wheel_, ui::px(12), 0);
+      lv_obj_set_style_bg_opa(wheel_, LV_OPA_COVER, 0);
+      lv_obj_set_style_bg_opa(wheel_, LV_OPA_COVER, LV_PART_SELECTED);
+      lv_obj_set_size(wheel_, width_, wheel_h);
+      lv_obj_set_pos(wheel_, 0, wheel_y);
+      lv_obj_add_event_cb(wheel_, &MusicCard::wheel_turned, LV_EVENT_VALUE_CHANGED, this);
+      style_wheel();
+      play_ = button(0, height_ - play_h, width_, play_h, theme::ACCENT);
+      play_icon_ = glyph(play_, ICON_PLAY, theme::ON_ACCENT);
+      play_text_ = ui::label(play_, Font::BODY_LARGE, theme::ON_ACCENT);
+      hide(wheel_, true);
+      hide(play_, true);
+    }
+#endif
+
     show(View::NOW);
   }
 
@@ -458,6 +499,12 @@ class MusicCard : public tessera::Card {
     restyle(next_, theme::RAISED);
     for (int i = 0; i < 6; ++i) if (keys_[i]) restyle(keys_[i], i == 1 ? theme::ACCENT : theme::RAISED);
     for (int i = 0; i < rows_; ++i) restyle(row_[i].box, theme::CARD);
+    for (int i = 0; i < KIND_KEYS; ++i) {
+      restyle(kind_key_[i].box, theme::RAISED);
+      ui::set_color(kind_key_[i].icon, theme::ACCENT);
+      ui::set_color(kind_key_[i].text, theme::INK);
+    }
+    style_wheel();
     for (lv_obj_t *l : {head_icon_, head_text_, library_text_, title_, volume_}) if (l) ui::set_color(l, theme::INK);
     for (lv_obj_t *l : {head_more_, artist_, page_, note_}) if (l) ui::set_color(l, theme::MUTED);
     for (int i = 0; i < 6; ++i) if (key_icon_[i]) ui::set_color(key_icon_[i], i == 1 ? theme::ON_ACCENT : theme::INK);
@@ -500,6 +547,13 @@ class MusicCard : public tessera::Card {
       paint();
       return;
     }
+    if (view_ == View::KINDS)
+      for (int i = 0; i < KIND_KEYS; ++i)
+        if (inside(kind_key_[i].box, p)) { pick_kind(kind_entry_[i]); return; }
+    if (view_ == View::ITEMS && wheel_) {
+      if (inside(play_, p)) play_chosen(*tile);
+      return;
+    }
     if (inside(prev_, p) && !lv_obj_has_flag(prev_, LV_OBJ_FLAG_HIDDEN)) { turn(-1); return; }
     if (inside(next_, p) && !lv_obj_has_flag(next_, LV_OBJ_FLAG_HIDDEN)) { turn(1); return; }
     for (int i = 0; i < rows_; ++i) {
@@ -514,6 +568,10 @@ class MusicCard : public tessera::Card {
     if (!asked_ || (message["re"] | 0u) != asked_) return;
     asked_ = 0;
     loading_ = false;
+    if (wheel_) {
+      take(message);
+      return;
+    }
     count_ = 0;
     if (!(message["ok"] | false)) {
       failed_ = true;
@@ -541,6 +599,13 @@ class MusicCard : public tessera::Card {
   static constexpr int ROWS = 6;
   struct Row { lv_obj_t *box = nullptr, *icon = nullptr, *text = nullptr, *side = nullptr, *mark = nullptr; int y = 0; };
   struct Item { char name[49] = "", uri[49] = "", type[16] = "", side[49] = ""; bool playable = false; };
+  // The items of the wheel, as many as a person turns through: kept in PSRAM, made when the card opens.
+  static constexpr int SHELF = 120;
+  struct Shelf : public tessera::InPsram { Item items[SHELF]; };
+  // How many the wheel asks for before a person turns it, so it opens with more than a page.
+  static constexpr int FIRST_FILL = 18;
+  static constexpr int KIND_KEYS = KIND_COUNT + 1;
+  struct KindKey { lv_obj_t *box = nullptr, *icon = nullptr, *text = nullptr; };
 
   lv_obj_t *button(int x, int y, int w, int h, theme::Role fill) {
     lv_obj_t *b = ui::block(parent_, fill);
@@ -615,7 +680,12 @@ class MusicCard : public tessera::Card {
   void show(View view) {
     view_ = view;
     if (view == View::ROOMS) page_no_ = 0;
-    if (view == View::ITEMS) ask();
+    if (view == View::ITEMS) {
+      total_ = 0;
+      offset_ = 0;
+      fill_wheel();
+      ask();
+    }
     paint();
   }
 
@@ -649,6 +719,11 @@ class MusicCard : public tessera::Card {
     hide(next_, true);
     hide(page_, true);
     hide(note_, true);
+    if (view_ != View::KINDS || !tile) for (int i = 0; i < KIND_KEYS; ++i) hide(kind_key_[i].box, true);
+    if (view_ != View::ITEMS || !tile) {
+      hide(wheel_, true);
+      hide(play_, true);
+    }
     if (!tile) {
       hide(head_, true);
       hide(library_, true);
@@ -708,29 +783,85 @@ class MusicCard : public tessera::Card {
     pager(entries_);
   }
 
+  // The kinds as a grid of keys: Favourites first, then every kind; four across where they keep a finger's width.
   void paint_kinds() {
-    entries_ = (favourites_ ? 0 : 1) + KIND_COUNT;
-    const int first = kind_page_ * rows_;
-    for (int i = 0; i < rows_; ++i) {
-      const int at = first + i;
-      if (at >= entries_) { hide(row_[i].box, true); continue; }
-      const int kind = favourites_ ? at : at - 1;
-      row_entry_[i] = kind;
-      if (kind < 0) row(i, ICON_HEART, plugin_->text("favourites"), "", false, false, true);
-      else row(i, KINDS[kind].icon, plugin_->text(KINDS[kind].word), favourites_ ? plugin_->text("favourites") : "", false, false, true);
-    }
-    pager(entries_, kind_page_);
-    if (!plugin_->players_at(tile_)->library()[0]) {
-      for (int i = 0; i < rows_; ++i) hide(row_[i].box, true);
-      hide(prev_, true);
-      hide(next_, true);
-      hide(page_, true);
+    for (int i = 0; i < rows_; ++i) hide(row_[i].box, true);
+    const bool has_library = plugin_->players_at(tile_)->library()[0] != '\0';
+    const int entries = (favourites_ ? 0 : 1) + KIND_COUNT;
+    if (!has_library) {
+      for (int i = 0; i < KIND_KEYS; ++i) hide(kind_key_[i].box, true);
       hide(note_, false);
       ui::set_text(note_, plugin_->text("no_library"));
+      return;
+    }
+    const int icon_w = ui::line_height(Font::ICON_SMALL) + ui::px(4), lh = ui::line_height(Font::BODY_LARGE);
+    int widest = 0;
+    for (int i = 0; i < entries; ++i) {
+      const int kind = favourites_ ? i : i - 1;
+      widest = std::max(widest, ui::text_width(plugin_->text(kind < 0 ? "favourites" : KINDS[kind].word), Font::BODY_LARGE));
+    }
+    // The most keys across that keep every word whole and every key a finger's height, all on the card: with the icon
+    // over the word where the key is tall enough, else beside it. Two across, smaller, when nothing else fits.
+    // On a small card the keys take the room of the head too (Now playing shows where it plays).
+    int cols = 2, kh = 0, kw = 0, top = 0;
+    bool stacked = false, fits = false;
+    for (int head : {key_ + gap_, 0}) {
+      const int room = height_ - head;
+      for (int n : {4, 3, 2}) {
+        const int lines = (entries + n - 1) / n;
+        const int h = std::min(key_ * 2, (room - (lines - 1) * gap_) / lines), w = (width_ - (n - 1) * gap_) / n;
+        const bool over = h >= icon_w + lh + ui::px(12) && w >= widest + ui::px(12);
+        const bool beside = h >= std::max(ui::mm(8), lh + ui::px(8)) && w >= icon_w + gap_ + widest + ui::px(16);
+        cols = n, kh = h, kw = w, stacked = over, top = head;
+        if ((fits = over || beside)) break;
+      }
+      if (fits) break;
+    }
+    hide(head_, top == 0);
+    for (int i = 0; i < KIND_KEYS; ++i) {
+      KindKey &k = kind_key_[i];
+      if (i >= entries) { hide(k.box, true); continue; }
+      const int kind = favourites_ ? i : i - 1;
+      kind_entry_[i] = kind;
+      hide(k.box, false);
+      lv_obj_set_pos(k.box, (i % cols) * (kw + gap_), top + (i / cols) * (kh + gap_));
+      lv_obj_set_size(k.box, kw, kh);
+      set_icon(k.icon, kind < 0 ? ICON_HEART : KINDS[kind].icon);
+      ui::set_text(k.text, plugin_->text(kind < 0 ? "favourites" : KINDS[kind].word));
+      if (stacked) {
+        lv_obj_set_width(k.icon, kw);
+        lv_obj_set_pos(k.icon, 0, (kh - icon_w - lh) / 2);
+        lv_obj_set_size(k.text, kw - ui::px(8), lh);
+        lv_obj_set_pos(k.text, ui::px(4), (kh - icon_w - lh) / 2 + icon_w);
+      } else {
+        lv_obj_set_width(k.icon, icon_w);
+        const int tw = std::min(kw - icon_w - gap_ - ui::px(8), ui::text_width(lv_label_get_text(k.text), Font::BODY_LARGE) + 2);
+        const int x0 = std::max(ui::px(4), (kw - icon_w - gap_ - tw) / 2);
+        lv_obj_set_pos(k.icon, x0, (kh - ui::line_height(Font::ICON_SMALL)) / 2);
+        lv_obj_set_size(k.text, std::max(1, tw), lh);
+        lv_obj_set_pos(k.text, x0 + icon_w + gap_, (kh - lh) / 2);
+      }
     }
   }
 
+  void pick_kind(int kind) {
+    if (kind < 0) { favourites_ = true; paint(); return; }
+    kind_ = kind;
+    offset_ = 0;
+    show(View::ITEMS);
+  }
+
   void paint_items() {
+    if (wheel_) {
+      for (int i = 0; i < rows_; ++i) hide(row_[i].box, true);
+      const bool any = total_ > 0;
+      hide(wheel_, !any);
+      hide(play_, !any);
+      hide(note_, any);
+      if (!any) ui::set_text(note_, plugin_->text(loading_ ? "loading" : failed_ ? "failed" : "empty"));
+      if (any) paint_play();
+      return;
+    }
     if (loading_ || failed_ || count_ == 0) {
       for (int i = 0; i < rows_; ++i) hide(row_[i].box, true);
       hide(note_, false);
@@ -795,11 +926,7 @@ class MusicCard : public tessera::Card {
       return;
     }
     if (view_ == View::KINDS) {
-      const int kind = row_entry_[i];
-      if (kind < 0) { favourites_ = true; kind_page_ = 0; paint(); return; }
-      kind_ = kind;
-      offset_ = 0;
-      show(View::ITEMS);
+      pick_kind(row_entry_[i]);
       return;
     }
     if (view_ == View::ITEMS && i < count_ && items_[i].playable) {
@@ -808,10 +935,114 @@ class MusicCard : public tessera::Card {
     }
   }
 
+  // A page of the library for the wheel: its items after those it has, and the next page asked for while it opened
+  // with fewer than FIRST_FILL; later pages when a person turns it near its end.
+  void take(JsonObjectConst message) {
+    loading_ = false;
+    if (!(message["ok"] | false)) {
+      failed_ = total_ == 0;
+      paint();
+      tessera::refresh();
+      return;
+    }
+    int got = 0;
+    for (JsonObjectConst item : message["result"]["items"].as<JsonArrayConst>()) {
+      if (total_ >= SHELF) break;
+      Item &it = shelf_->items[total_];
+      put(it.name, item["name"] | "");
+      if (!it.name[0]) continue;
+      // A name is one line of the wheel.
+      for (char *ch = it.name; *ch; ++ch) if (*ch == '\n' || *ch == '\r') *ch = ' ';
+      const char *uri = item["uri"] | "";
+      // An address cut at the app's 48 bytes plays nothing: the Play key says so by staying grey.
+      it.playable = uri[0] && strlen(uri) < 48;
+      put(it.uri, uri);
+      put(it.type, item["media_type"] | KINDS[kind_].type);
+      put(it.side, item["artists"][0]["name"] | "");
+      ++total_;
+      ++got;
+    }
+    more_ = got >= KINDS[kind_].page && total_ < SHELF;
+    fill_wheel();
+    if (more_ && total_ < FIRST_FILL) ask();
+    paint();
+    tessera::refresh();
+  }
+
+  // The wheel's lines: every item it has, the chosen one kept where it was.
+  void fill_wheel() {
+#if LV_USE_ROLLER
+    if (!wheel_) return;
+    const uint32_t chosen = total_ ? std::min<uint32_t>(lv_roller_get_selected(wheel_), total_ - 1) : 0;
+    std::string lines;
+    for (int i = 0; i < total_; ++i) {
+      if (i) lines += '\n';
+      lines += shelf_->items[i].name;
+    }
+    lv_roller_set_options(wheel_, total_ ? lines.c_str() : " ", LV_ROLLER_MODE_NORMAL);
+    lv_roller_set_visible_row_count(wheel_, 5);
+    lv_obj_set_height(wheel_, wheel_h_());
+    lv_roller_set_selected(wheel_, chosen, LV_ANIM_OFF);
+#endif
+  }
+  int wheel_h_() const { return height_ - (key_ + gap_) - gap_ - key_ - gap_; }
+
+  int chosen() const {
+#if LV_USE_ROLLER
+    if (wheel_ && total_) return std::min<int>(lv_roller_get_selected(wheel_), total_ - 1);
+#endif
+    return -1;
+  }
+
+  // The Play key: what the middle of the wheel plays, and who, in its words; grey for one that cannot play.
+  void paint_play() {
+    const int i = chosen();
+    if (i < 0) return;
+    const Item &it = shelf_->items[i];
+    const std::string words = it.side[0] ? tessera::fill(plugin_->text("play_by"), "artist", it.side)
+                                         : std::string(plugin_->text("play"));
+    ui::set_text(play_text_, words);
+    const int icon_w = lv_obj_get_width(play_icon_), lh = ui::line_height(Font::BODY_LARGE);
+    const int tw = std::min(width_ - icon_w - 3 * gap_, ui::text_width(words, Font::BODY_LARGE) + 2);
+    const int x0 = std::max(gap_, (width_ - icon_w - gap_ - tw) / 2);
+    lv_obj_set_pos(play_icon_, x0, (key_ - ui::line_height(Font::ICON_SMALL)) / 2);
+    lv_obj_set_size(play_text_, std::max(1, tw), lh);
+    lv_obj_set_pos(play_text_, x0 + icon_w + gap_, (key_ - lh) / 2);
+    restyle(play_, it.playable ? theme::ACCENT : theme::RAISED);
+    ui::set_color(play_icon_, it.playable ? theme::ON_ACCENT : theme::SUBTLE);
+    ui::set_color(play_text_, it.playable ? theme::ON_ACCENT : theme::SUBTLE);
+  }
+
+  void play_chosen(Players &tile) {
+    const int i = chosen();
+    if (i < 0 || !shelf_->items[i].playable) return;
+    tile.play(shelf_->items[i].uri, shelf_->items[i].type);
+    show(View::NOW);
+  }
+
+  // The wheel's colours, as the alarm clock's: the middle line in the accent.
+  void style_wheel() {
+    if (!wheel_) return;
+    lv_obj_set_style_bg_color(wheel_, ui::color(theme::RAISED), 0);
+    lv_obj_set_style_text_color(wheel_, ui::color(theme::MUTED), 0);
+    lv_obj_set_style_bg_color(wheel_, ui::tone_color(tessera::Tone::ACCENT, theme::INK), LV_PART_SELECTED);
+    lv_obj_set_style_text_color(wheel_, ui::color(theme::ON_ACCENT), LV_PART_SELECTED);
+  }
+
+#if LV_USE_ROLLER
+  // A turn of the wheel: the Play key follows it, and near the end the next page is asked for.
+  static void wheel_turned(lv_event_t *e) {
+    auto *self = static_cast<MusicCard *>(lv_event_get_user_data(e));
+    if (!self->wheel_ || self->view_ != View::ITEMS) return;
+    if (self->more_ && !self->loading_ && self->chosen() >= self->total_ - 4) self->ask();
+    self->paint_play();
+  }
+#endif
+
   // A page of the library, through the app: music_assistant.get_library of the tile's Music Assistant entry.
   void ask() {
     Players *tile = plugin_->players_at(tile_);
-    count_ = 0;
+    if (!wheel_) count_ = 0;
     failed_ = false;
     more_ = false;
     if (!tile || !tile->library()[0]) { failed_ = true; return; }
@@ -821,8 +1052,8 @@ class MusicCard : public tessera::Card {
     data["config_entry_id"] = tile->library();
     data["media_type"] = KINDS[kind_].type;
     if (favourites_) data["favorite"] = true;
-    data["limit"] = page_size();
-    data["offset"] = offset_;
+    data["limit"] = wheel_ ? KINDS[kind_].page : page_size();
+    data["offset"] = wheel_ ? total_ : offset_;
     data["order_by"] = "sort_name";
     asked_ = tessera::send(plugin_, request.as<JsonObjectConst>());
     loading_ = asked_ != 0;
@@ -844,6 +1075,11 @@ class MusicCard : public tessera::Card {
   bool loading_ = false, failed_ = false, more_ = false;
   uint32_t asked_ = 0;
   Item items_[ROWS];
+  KindKey kind_key_[KIND_KEYS];
+  int kind_entry_[KIND_KEYS] = {};
+  Shelf *shelf_ = nullptr;
+  lv_obj_t *wheel_{}, *play_{}, *play_icon_{}, *play_text_{};
+  int total_ = 0;
 };
 
 // ---- The plugin ----
