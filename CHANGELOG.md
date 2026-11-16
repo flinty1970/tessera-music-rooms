@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.4
+
+- **Whole House (a Music Assistant group) ticked while music plays** now takes the music over (Music Assistant's
+  transfer of the queue) and the card holds it, instead of waiting for the next item. Needs the join script, updated
+  in `scripts/music_rooms_join.yaml`.
+
 ## 0.12.3
 
 - **This room or all rooms**: a tap on the volume between − and + switches the keys between the room they act on and

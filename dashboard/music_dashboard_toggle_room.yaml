@@ -15,16 +15,34 @@ sequence:
       chosen: "{{ states('input_select.music_dashboard_room') }}"
       group: "{{ state_attr(states('input_select.music_dashboard_room'), 'group_members') or [] }}"
       lead: "{{ group[0] if group | length > 1 else chosen }}"
+      is_group: "{{ is_state_attr(room, 'mass_player_type', 'group') }}"
   - condition: template
     value_template: "{{ room != chosen and room != lead }}"
-  - if:
-      - condition: template
-        value_template: "{{ room in group }}"
-    then:
-      - action: media_player.unjoin
-        target:
-          entity_id: "{{ room }}"
-    else:
+  - choose:
+      # A Music Assistant group player (Whole House) takes over what plays, and the dashboard then controls it.
+      - conditions:
+          - condition: template
+            value_template: "{{ is_group }}"
+        sequence:
+          - action: music_assistant.transfer_queue
+            target:
+              entity_id: "{{ room }}"
+            data:
+              source_player: "{{ lead }}"
+              auto_play: true
+          - action: input_select.select_option
+            target:
+              entity_id: input_select.music_dashboard_room
+            data:
+              option: "{{ room }}"
+      - conditions:
+          - condition: template
+            value_template: "{{ room in group }}"
+        sequence:
+          - action: media_player.unjoin
+            target:
+              entity_id: "{{ room }}"
+    default:
       - action: media_player.join
         target:
           entity_id: "{{ lead }}"

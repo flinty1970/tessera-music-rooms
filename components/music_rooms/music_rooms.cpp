@@ -213,12 +213,19 @@ class Players : public tessera::InPsram {
     for (int i = 0; i < SLOTS; ++i)
       if (gone_out & (1u << i)) tessera::action("media_player.unjoin", rooms_[i].id);
     joined &= ~gone_out;
-    uint16_t come = 0;
-    if (joinable(lead))
-      for (int i = 0; i < SLOTS; ++i)
-        if ((now & ~before & (1u << i)) && i != lead && joinable(i) && !gone(rooms_[i].state)) come |= 1u << i;
-    if (come && join(lead, come)) joined |= come;
+    uint16_t come = 0, groups = 0;
+    const bool script = plugin_->join_script()[0] != '\0';
+    for (int i = 0; i < SLOTS; ++i) {
+      if (!(now & ~before & (1u << i)) || i == lead || !rooms_[i].used() || gone(rooms_[i].state)) continue;
+      if (joinable(lead) && joinable(i)) come |= 1u << i;
+      // A Music Assistant group (Whole House) cannot join: with the join script what plays moves to it instead, and
+      // the card then holds it.
+      else if (script && rooms_[i].group) groups |= 1u << i;
+    }
+    if ((come || groups) && join(lead, come | groups)) joined |= come;
     plugin_->set_joined(index_, joined);
+    for (int i = 0; i < SLOTS; ++i)
+      if (groups & (1u << i)) { focus(i); break; }
   }
   // "Kitchen", "Kitchen + 2" or "All rooms".
   std::string rooms_text() const {

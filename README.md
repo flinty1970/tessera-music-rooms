@@ -49,7 +49,7 @@ music_rooms:
 | Script | What it does | Without it |
 |---|---|---|
 | `music_rooms_play` (`scripts/music_rooms_play.yaml`) | Plays a Spotify playlist or artist exactly: the app gives a plugin 48 characters of a text, so the screen sends the start of the address, the name and the kind, and the script plays the one search result whose address starts so. | Such an item plays by its name, which another item may share. |
-| `music_rooms_join` (`scripts/music_rooms_join.yaml`) | Joins the rooms you tick to the lead of the group the controlled room is in (the first of its `group_members`). Music Assistant ignores a join to a room that is a member of another room's group, and the screen cannot see the groups. | A room ticked while the controlled room is a member of another room's group is not joined. |
+| `music_rooms_join` (`scripts/music_rooms_join.yaml`) | Joins the rooms you tick to the lead of the group the controlled room is in (the first of its `group_members`). Music Assistant ignores a join to a room that is a member of another room's group, and the screen cannot see the groups. A Music Assistant group player (Whole House) ticked while music plays takes the music over instead (`music_assistant.transfer_queue`). | A room ticked while the controlled room is a member of another room's group is not joined, and a Music Assistant group (Whole House) ticked while music plays waits for the next item. |
 
 Both run in Home Assistant with the screen's own permission to perform actions (`script.turn_on`). A screen must be
 allowed to perform Home Assistant actions (Settings, Devices & services, ESPHome, the screen, Configure).
