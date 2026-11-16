@@ -1,5 +1,6 @@
 # Music rooms dashboard: Move on a room's row. Add it as a script with the id music_dashboard_move_room.
 # What plays (the controlled room, its group, or Whole House while it plays) moves to that room alone.
+# The dashboard switches to the room at once; the speaker takes a few seconds to start.
 alias: Music dashboard – move the music to a room
 description: 'Move on a room of the music dashboard: what plays (in the controlled room, its group or the Music Assistant
   group player such as Whole House) moves to that room alone (music_assistant.transfer_queue), and the dashboard then controls
@@ -32,6 +33,11 @@ sequence:
     value_template: '{{ room == lead }}'
   then:
   - stop: The music already plays there.
+- action: input_select.select_option
+  data:
+    option: '{{ room }}'
+  target:
+    entity_id: input_select.music_dashboard_room
 - if:
   - condition: template
     value_template: '{{ states(lead) in [''playing'', ''paused'', ''buffering''] }}'
@@ -45,7 +51,7 @@ sequence:
       target:
         entity_id: '{{ room }}'
     - delay:
-        seconds: 1
+        milliseconds: 300
   - action: music_assistant.transfer_queue
     continue_on_error: true
     data:
@@ -53,8 +59,3 @@ sequence:
       source_player: '{{ lead }}'
     target:
       entity_id: '{{ room }}'
-- action: input_select.select_option
-  data:
-    option: '{{ room }}'
-  target:
-    entity_id: input_select.music_dashboard_room
