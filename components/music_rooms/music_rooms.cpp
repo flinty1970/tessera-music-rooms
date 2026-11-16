@@ -1658,8 +1658,9 @@ class MusicCard : public tessera::Card {
       }
       if (add == Players::Add::MOVE) {
         // What plays moves here (the join script's music_assistant.transfer_queue); this room is then the one in charge.
+        // Sent as a move, whatever was ticked before: a room still ticked from earlier would otherwise send nothing.
+        if (!tile.move_to(slot)) return;
         plugin_->explain(tile.room(slot).name, tile.room(tile.lead_slot()).name, true);
-        tile.choose(tile.chosen() | (1u << slot));
         tile.focus(slot);
         page_no_ = 0;
         show(View::NOW);

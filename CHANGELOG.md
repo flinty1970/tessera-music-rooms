@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.2
+
+- A tap on a room that says "Moves here" always moves the music, also when that room was ticked before (it
+  showed the popup and moved nothing).
+
 ## 0.13.1
 
 - **Move here** in Playing, beside Control: what plays (the room you control, its group, or Whole House) moves to the
