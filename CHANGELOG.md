@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.6
+
+- A speaker that plays in Whole House (or another Music Assistant group) now stands for the group: the card says
+  "Plays in Whole House", Rooms ticks Whole House and its playing speakers, and the keys act on the group.
+- Other rooms' songs show the artist without the album.
+
 ## 0.13.5
 
 - **All rooms** is gone from Rooms: it overlapped Whole House. For every speaker at once, play on a Music Assistant

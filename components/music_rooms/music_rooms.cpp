@@ -76,6 +76,8 @@ struct Room {
   // that is out, when it went, and what the room was then.
   uint32_t asked = 0, asked_at = 0, asked_updated = 0;
   char asked_state[16] = "";
+  // The Music Assistant queue it plays from, from its last answer: a speaker in Whole House plays Whole House's queue.
+  char queue[49] = "";
   bool used() const { return id[0] != '\0'; }
 };
 
@@ -150,9 +152,30 @@ class Players : public tessera::InPsram {
   const char *library() const { return library_; }
   const char *open_on() const { return open_on_; }
   // The slots of the rooms it plays in next, one bit each in the tile's order; its own player while none is picked.
+  // A room picked that plays in a Music Assistant group's queue (a speaker of Whole House) stands for that group: the
+  // group is in charge of it, so the card shows and acts on the group.
   uint16_t chosen() const {
     const uint16_t picked = plugin_->chosen(index_) & used_mask();
-    return picked ? picked : 1;
+    if (!picked) return 1;
+    for (int i = 0; i < SLOTS; ++i) {
+      if (!(picked & (1u << i))) continue;
+      const int owner = owner_of(i);
+      if (owner >= 0) return 1u << owner;
+    }
+    return picked;
+  }
+  // The slot of the playing Music Assistant group whose queue this room plays from, -1 when none.
+  int owner_of(int slot) const {
+    const Room &r = rooms_[slot];
+    if (!r.used() || r.group || !r.queue[0] || !on(r)) return -1;
+    for (int j = 0; j < SLOTS; ++j) {
+      const Room &g = rooms_[j];
+      if (j != slot && g.used() && g.group && on(g) && !strcmp(g.queue, r.queue)) return j;
+    }
+    return -1;
+  }
+  static bool on(const Room &r) {
+    return !strcmp(r.state, "playing") || !strcmp(r.state, "paused") || !strcmp(r.state, "buffering");
   }
   // The room the others follow and the keys act on: of the rooms picked, the one that plays and that this tile did not
   // join to another (what plays leads, whatever its place in the list), else one that plays, else the first.
@@ -178,6 +201,11 @@ class Players : public tessera::InPsram {
   // The card takes this room over (what plays where, a tap on a room): its keys act on it and the next item plays
   // there; nothing is joined, taken apart or stopped, in this room or any other.
   void focus(int slot) {
+    // What it played may move away from its group now: its queue is asked again before it stands for the group.
+    if (slot >= 0 && slot < SLOTS && !rooms_[slot].group) {
+      rooms_[slot].queue[0] = '\0';
+      soon(rooms_[slot]);
+    }
     plugin_->set_chosen(index_, (1u << slot) & used_mask() ? (1u << slot) : 1);
     plugin_->set_joined(index_, 0);
     note_ = Note::NONE;
@@ -496,13 +524,14 @@ class Players : public tessera::InPsram {
       const char *stream = q["stream"] | "";
       put(r.title, stream[0] ? stream : (q["title"] | ""));
       put(r.artist, stream[0] ? (q["title"] | "") : (q["artist"] | ""));
-      put(r.album, stream[0] ? "" : (q["album"] | ""));
+      r.album[0] = '\0';  // not asked: the answer holds 8 fields, the queue took its place
       r.duration = q["duration"].is<float>() ? static_cast<int>(q["duration"].as<float>()) : -1;
       r.position = q["elapsed"].is<float>() ? static_cast<int>(q["elapsed"].as<float>()) : -1;
       r.at = tessera::epoch();
       const char *on = q["shuffle"] | "";
       r.shuffle = on[0] ? (!strcmp(on, "True") || !strcmp(on, "true") || !strcmp(on, "1")) : -1;
       put(r.repeat, q["repeat"] | "");
+      put(r.queue, q["queue"] | "");
       return true;
     }
     return false;

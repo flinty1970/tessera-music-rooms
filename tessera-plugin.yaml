@@ -3,7 +3,7 @@
 # its keys. Every name, label and hint below is a key into translations/<language>.json, part "app". docs/MANIFEST.md
 # in the plugins repository has every field.
 id: music_rooms
-version: 0.13.5
+version: "0.13.6"
 # 0.15: options of kind entity (the rooms); 0.17: the cover of the tile's own player by name (cover:).
 api: "0.18"
 icon: speaker-multiple
@@ -92,12 +92,12 @@ answers:
     fields:
       title: "[*].current_item.media_item.name"
       artist: "[*].current_item.media_item.artists[0].name"
-      album: "[*].current_item.media_item.album.name"
       stream: "[*].current_item.stream_title"
       duration: { path: "[*].current_item.duration", as: number }
       elapsed: { path: "[*].elapsed_time", as: number }
       shuffle: "[*].shuffle_enabled"
       repeat: "[*].repeat_mode"
+      queue: "[*].queue_id"
 
 cards:
   # Now playing, the rooms and the library, over the whole width of the glass. Its one picture is the cover of the
