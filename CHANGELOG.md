@@ -4,6 +4,8 @@
 
 - Tapping Whole House while music plays in another room moves the music to Whole House (all its rooms), instead of
   only choosing it for the next song.
+- Untick Whole House while it plays: the music goes on in the speakers that were playing in it, as a group of their
+  own. Tick Whole House again and every room of it comes back.
 - On Rooms, tap "Plays in Kitchen + 2" at the top: a popup lists every room it plays in.
 
 ## 0.13.8

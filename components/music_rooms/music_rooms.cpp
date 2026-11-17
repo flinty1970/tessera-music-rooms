@@ -462,6 +462,23 @@ class Players : public tessera::InPsram {
     return tessera::action("script.turn_on", plugin_->join_script(), data.as<JsonVariantConst>());
   }
 
+  // Whole House unticked while it plays: the music goes on in the speakers that play in it, as a group of their own
+  // (the join script's leave of the group player), and those speakers stay ticked.
+  bool ungroup() {
+    const int lead = lead_slot();
+    const uint16_t keep = volume_rooms();
+    if (!leave(lead, 1u << lead)) return false;
+    for (int i = 0; i < SLOTS; ++i)
+      if (keep & (1u << i)) {
+        rooms_[i].queue[0] = '\0';
+        soon(rooms_[i]);
+      }
+    plugin_->set_chosen(index_, keep ? keep : 1);
+    plugin_->set_joined(index_, 0);
+    note_ = Note::NONE;
+    return true;
+  }
+
   // What plays in the first room (its group, or the Music Assistant group it plays in) moves to this room alone: the
   // join script's move (music_assistant.transfer_queue). False without the join script or while nothing plays.
   bool move_to(int slot) {
@@ -1811,8 +1828,9 @@ class MusicCard : public tessera::Card {
       const int slot = row_entry_[i];
       if (slot < 0 || gone(tile.room(slot).state)) return;
       if (tile.group_playing() && slot == tile.lead_slot()) {
-        // Whole House unticked (or ticked again): then a tap on one room moves the music there alone.
-        narrow_ = !narrow_;
+        // Whole House unticked: the music goes on in its speakers, as a group of their own. Ticked again later, it takes
+        // the music back with all its rooms.
+        tile.ungroup();
         paint();
         return;
       }
