@@ -4,8 +4,8 @@
 
 - Volume: tap the % between the volume keys to go through all the rooms it plays in ("All 30 %"), then each room on
   its own ("Stereo 34 %"), then all again. The keys change what is shown; all of them each from its own level.
-- While Whole House plays, a room that cannot join it (a screen's own speaker) is greyed with "Can't add", as
-  for other groups.
+- While Whole House plays, a room that cannot join it (a screen's own speaker) says "Moves here": a tap moves the
+  music there alone, as with other groups.
 - From Whole House down to one room: on Rooms, tap Whole House to untick it, then tap the one room to play in. The
   music moves there alone. Tap Whole House again to keep it as it was.
 
