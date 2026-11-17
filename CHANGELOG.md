@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.7
+
+- From Whole House down to one room: on Rooms, tap Whole House to untick it, then tap the one room to play in. The
+  music moves there alone. Tap Whole House again to keep it as it was.
+
 ## 0.13.6
 
 - A speaker that plays in Whole House (or another Music Assistant group) now stands for the group: the card says

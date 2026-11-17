@@ -1285,6 +1285,7 @@ class MusicCard : public tessera::Card {
 
   void show(View view) {
     view_ = view;
+    narrow_ = false;
     if (view == View::ROOMS || view == View::PLAYING) page_no_ = 0;
     if (view == View::PLAYING) start_playing_ = true;
     if (view == View::ITEMS) {
@@ -1538,6 +1539,16 @@ class MusicCard : public tessera::Card {
       if (at >= entries_) { hide(row_[i].box, true); continue; }
       row_entry_[i] = listed[at];
       const Room &r = tile.room(listed[at]);
+      if (tile.group_playing() && listed[at] == tile.lead_slot()) {
+        // Whole House itself: ticked; unticked, it asks for the one room to go on in.
+        row(i, ICON_SPEAKER, r.name, narrow_ ? plugin_->text("pick_one") : "", !narrow_, false);
+        continue;
+      }
+      if (tile.group_playing() && narrow_ && !r.group) {
+        row(i, ICON_SPEAKER, r.name, gone(r.state) ? plugin_->text("unavailable") : plugin_->text("moves_here"), false,
+            gone(r.state));
+        continue;
+      }
       if (tile.group_playing() && listed[at] != tile.lead_slot() && !r.group) {
         // Whole House plays: its speakers that play are ticked; a tap takes one out or puts one in.
         row(i, ICON_SPEAKER, r.name, gone(r.state) ? plugin_->text("unavailable") : "", tile.in_group_now(listed[at]),
@@ -1703,6 +1714,21 @@ class MusicCard : public tessera::Card {
     if (view_ == View::ROOMS) {
       const int slot = row_entry_[i];
       if (slot < 0 || gone(tile.room(slot).state)) return;
+      if (tile.group_playing() && slot == tile.lead_slot()) {
+        // Whole House unticked (or ticked again): then a tap on one room moves the music there alone.
+        narrow_ = !narrow_;
+        paint();
+        return;
+      }
+      if (tile.group_playing() && narrow_ && !tile.room(slot).group) {
+        narrow_ = false;
+        if (!tile.move_to(slot)) return;
+        plugin_->explain(tile.room(slot).name, tile.room(tile.lead_slot()).name, true);
+        tile.focus(slot);
+        page_no_ = 0;
+        show(View::NOW);
+        return;
+      }
       if (tile.group_playing() && slot != tile.lead_slot() && !tile.room(slot).group) {
         tile.toggle_in_group(slot);
         paint();
@@ -2095,6 +2121,8 @@ class MusicCard : public tessera::Card {
   Row row_[ROWS];
   int row_entry_[ROWS] = {};
   View view_ = View::NOW;
+  // Whole House unticked while it plays: the next room tapped takes the music alone (a move).
+  bool narrow_ = false;
   int page_no_ = 0, kind_page_ = 0, entries_ = 0;
   bool favourites_ = false;
   int kind_ = 0, offset_ = 0, count_ = 0;
