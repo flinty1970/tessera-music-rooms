@@ -2,6 +2,8 @@
 
 ## 0.13.7
 
+- While Whole House plays, a room that cannot join it (a screen's own speaker) is greyed with "Can't add", as
+  for other groups.
 - From Whole House down to one room: on Rooms, tap Whole House to untick it, then tap the one room to play in. The
   music moves there alone. Tap Whole House again to keep it as it was.
 

@@ -1550,9 +1550,12 @@ class MusicCard : public tessera::Card {
         continue;
       }
       if (tile.group_playing() && listed[at] != tile.lead_slot() && !r.group) {
-        // Whole House plays: its speakers that play are ticked; a tap takes one out or puts one in.
-        row(i, ICON_SPEAKER, r.name, gone(r.state) ? plugin_->text("unavailable") : "", tile.in_group_now(listed[at]),
-            gone(r.state));
+        // Whole House plays: its speakers that play are ticked; a tap takes one out or puts one in. One that cannot be
+        // grouped (a screen's own speaker) cannot join it: greyed, with why.
+        const bool cannot = !r.sync;
+        row(i, ICON_SPEAKER, r.name,
+            gone(r.state) ? plugin_->text("unavailable") : cannot ? plugin_->text("cannot_join") : "",
+            tile.in_group_now(listed[at]), gone(r.state) || cannot);
         continue;
       }
       const Players::Add add = tile.can_add(listed[at]);
@@ -1730,6 +1733,10 @@ class MusicCard : public tessera::Card {
         return;
       }
       if (tile.group_playing() && slot != tile.lead_slot() && !tile.room(slot).group) {
+        if (!tile.room(slot).sync) {
+          plugin_->explain(tile.room(slot).name, tile.room(tile.lead_slot()).name, false);
+          return;
+        }
         tile.toggle_in_group(slot);
         paint();
         return;
