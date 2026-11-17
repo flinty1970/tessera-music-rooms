@@ -903,6 +903,7 @@ class MusicCard : public tessera::Card {
         lv_obj_set_size(volume_, volume_w, ui::line_height(Font::BODY_LARGE));
         lv_obj_set_style_text_align(volume_, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_pos(volume_, x, keys_y + (round_ - ui::line_height(Font::BODY_LARGE)) / 2);
+        volume_mid_ = keys_y + round_ / 2;
         x += volume_w + gap_;
         continue;
       }
@@ -1461,7 +1462,17 @@ class MusicCard : public tessera::Card {
       if (v.volume >= 0) snprintf(words, sizeof(words), "%d", v.volume);
       std::string text = v.volume >= 0 ? tessera::fill(plugin_->text(tile.all_volume() ? "volume_all" : "volume"), "n", words)
                                        : std::string("-");
-      if (one >= 0) text = short_name(v.name) + " " + text;
+      // One room: its name over its volume, in the smaller font, so more of the name shows.
+      const Font font = one >= 0 ? Font::BODY : Font::BODY_LARGE;
+      const int lines = one >= 0 ? 2 : 1;
+      if (one >= 0) text = short_name(v.name) + "\n" + text;
+      ui::set_font(volume_, font);
+      lv_label_set_long_mode(volume_, one >= 0 ? LV_LABEL_LONG_CLIP : LV_LABEL_LONG_DOT);
+      const int h = lines * ui::line_height(font);
+      if (lv_obj_get_height(volume_) != h) {
+        lv_obj_set_height(volume_, h);
+        lv_obj_set_y(volume_, volume_mid_ - h / 2);
+      }
       ui::set_text(volume_, text);
     }
     // Shuffle and repeat in the accent while on; repeat one with its own icon.
@@ -2199,6 +2210,7 @@ class MusicCard : public tessera::Card {
   Row row_[ROWS];
   int row_entry_[ROWS] = {};
   View view_ = View::NOW;
+  int volume_mid_ = 0;  // the middle of the row of keys, where the volume label stands
   // Whole House unticked while it plays: the next room tapped takes the music alone (a move).
   bool narrow_ = false;
   int page_no_ = 0, kind_page_ = 0, entries_ = 0;

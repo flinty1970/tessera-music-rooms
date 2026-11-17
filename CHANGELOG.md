@@ -3,7 +3,9 @@
 ## 0.13.8
 
 - Rooms shows the real group: a speaker that plays in the same group as the room in charge (a Cast group, joined
-  here, on the tablet or in the Google Home app) is ticked, and unticked it leaves.
+  here, on the tablet or in the Google Home app) is ticked, and unticked it leaves. Unticking the room in charge keeps
+  the others chosen, so "Moves here" stays on the rooms that cannot join.
+- The volume of one room shows its name over its level in smaller letters, so more of the name fits.
 
 ## 0.13.7
 
