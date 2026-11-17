@@ -1,0 +1,48 @@
+# Whole House plays everywhere: an automation (Settings, Automations & scenes, Create automation, Edit in YAML, paste
+# this). When Whole House starts playing, however it was started, its rooms held by another group are freed and every
+# room it is missing joins it. Change the list under rooms to the speakers of your own Whole House.
+id: '1794885883791'
+alias: Whole House plays everywhere
+description: 'When Whole House (Music Assistant group) starts playing, however it was started (a screen, the tablet, the Music
+  Assistant app): rooms of it held by another group are freed, and every room it is missing joins it. Its rooms: Living Room
+  Google Home, Stereo, Living Room TV, Formal Room AirPlay, Family Room Display.'
+triggers:
+- entity_id: media_player.whole_house
+  to: playing
+  trigger: state
+actions:
+- variables:
+    rooms:
+    - media_player.living_room_google_home_2
+    - media_player.stereo_3
+    - media_player.living_room_tv_4
+    - media_player.aftr_64_formal_room_airplay
+    - media_player.family_room_display
+- variables:
+    busy: '{% set ns = namespace(out=[]) %}{% for m in rooms %}{% if (state_attr(m, ''group_members'') or []) | length > 1
+      and m not in (state_attr(''media_player.whole_house'', ''group_members'') or []) %}{% set ns.out = ns.out + [m] %}{%
+      endif %}{% endfor %}{{ ns.out }}'
+- if:
+  - condition: template
+    value_template: '{{ busy | length > 0 }}'
+  then:
+  - action: media_player.unjoin
+    continue_on_error: true
+    target:
+      entity_id: '{{ busy }}'
+  - delay:
+      seconds: 1
+- variables:
+    missing: '{{ rooms | reject(''in'', state_attr(''media_player.whole_house'', ''group_members'') or []) | reject(''is_state'',
+      ''unavailable'') | list }}'
+- if:
+  - condition: template
+    value_template: '{{ missing | length > 0 }}'
+  then:
+  - action: media_player.join
+    continue_on_error: true
+    data:
+      group_members: '{{ missing }}'
+    target:
+      entity_id: media_player.whole_house
+mode: single

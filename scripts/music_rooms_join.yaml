@@ -20,7 +20,8 @@ description: 'Adds rooms to what a player plays: a room that can group with it (
   its lead (the first of group_members); a Music Assistant group player (Whole House) takes the music over; a room of the
   playing Music Assistant group that already plays is left as it is. A room that cannot play in step with it (a screen''s
   own speaker, or any room while a screen''s speaker plays) gets the music moved to it (music_assistant.transfer_queue), and
-  the other ticked rooms that can group join it there. With move, what plays moves to the first of members alone (music_assistant.transfer_queue).'
+  the other ticked rooms that can group join it there. With move, what plays moves to the first of members alone (music_assistant.transfer_queue).
+  With toggle, while a Music Assistant group player plays, a member that plays leaves it and any other room joins it.'
 fields:
   members:
     description: The rooms to add.
@@ -70,15 +71,19 @@ sequence:
     - condition: template
       value_template: '{{ to != lead and states(lead) in [''playing'', ''paused'', ''buffering''] }}'
     then:
-    - alias: 'Moving to a Music Assistant group: free its speakers held by another group first'
+    - alias: 'Moving to a Music Assistant group: free all of its rooms (Whole House: every room) held by another group first'
       if:
       - condition: template
         value_template: '{{ is_state_attr(to, ''mass_player_type'', ''group'') }}'
       then:
       - variables:
-          busy: '{% set ns = namespace(out=[]) %}{% for m in state_attr(to, ''group_members'') or [] %}{% if m != lead and
-            (state_attr(m, ''group_members'') or []) | length > 1 %}{% set ns.out = ns.out + [m] %}{% endif %}{% endfor %}{{
-            ns.out }}'
+          wh_full: '{{ [''media_player.living_room_google_home_2'', ''media_player.stereo_3'', ''media_player.living_room_tv_4'',
+            ''media_player.aftr_64_formal_room_airplay'', ''media_player.family_room_display''] if to == ''media_player.whole_house''
+            else (state_attr(to, ''group_members'') or []) }}'
+      - variables:
+          busy: '{% set ns = namespace(out=[]) %}{% for m in wh_full %}{% if m != lead and (state_attr(m, ''group_members'')
+            or []) | length > 1 and m not in (state_attr(to, ''group_members'') or []) %}{% set ns.out = ns.out + [m] %}{%
+            endif %}{% endfor %}{{ ns.out }}'
       - if:
         - condition: template
           value_template: '{{ busy | length > 0 }}'
@@ -117,6 +122,40 @@ sequence:
         source_player: '{{ lead }}'
       target:
         entity_id: '{{ to }}'
+    - alias: 'Whole House: put back every room it is missing'
+      if:
+      - condition: template
+        value_template: '{{ to == ''media_player.whole_house'' }}'
+      then:
+      - delay:
+          seconds: 2
+      - variables:
+          missing: '{{ [''media_player.living_room_google_home_2'', ''media_player.stereo_3'', ''media_player.living_room_tv_4'',
+            ''media_player.aftr_64_formal_room_airplay'', ''media_player.family_room_display''] | reject(''in'', state_attr(to,
+            ''group_members'') or []) | reject(''is_state'', ''unavailable'') | list }}'
+      - if:
+        - condition: template
+          value_template: '{{ missing | length > 0 }}'
+        then:
+        - action: media_player.join
+          continue_on_error: true
+          data:
+            group_members: '{{ missing }}'
+          target:
+            entity_id: '{{ to }}'
+    - alias: 'A move never ends silent: play there if it has not started'
+      wait_template: '{{ is_state(to, ''playing'') }}'
+      timeout:
+        seconds: 8
+      continue_on_timeout: true
+    - if:
+      - condition: template
+        value_template: '{{ not is_state(to, ''playing'') }}'
+      then:
+      - action: media_player.media_play
+        continue_on_error: true
+        target:
+          entity_id: '{{ to }}'
   - stop: Moved.
 - if:
   - condition: template
@@ -127,6 +166,64 @@ sequence:
       real_group: '{{ (state_attr(lead, ''group_members'') or []) if not player_group else group }}'
   - variables:
       staying: '{{ real_group | reject(''in'', leaving) | list }}'
+  - alias: 'Whole House unticked: the music goes on in the speakers that played in it, as a group of their own'
+    if:
+    - condition: template
+      value_template: '{{ player_group and owner in leaving and states(owner) in [''playing'', ''paused'', ''buffering'']
+        }}'
+    then:
+    - variables:
+        keep: '{% set ns = namespace(out=[]) %}{% for m in group %}{% if m != owner and states(m) in [''playing'', ''paused'',
+          ''buffering''] and ((state_attr(m, ''supported_features'') | int(0)) // 524288) % 2 == 1 %}{% set ns.out = ns.out
+          + [m] %}{% endif %}{% endfor %}{{ ns.out }}'
+    - if:
+      - condition: template
+        value_template: '{{ keep | length > 0 }}'
+      then:
+      - alias: 'Pause what plays first: a Spotify account plays one stream at a time'
+        action: media_player.media_pause
+        continue_on_error: true
+        target:
+          entity_id: '{{ owner }}'
+      - action: media_player.unjoin
+        continue_on_error: true
+        target:
+          entity_id: '{{ keep }}'
+      - delay:
+          seconds: 1
+      - action: music_assistant.transfer_queue
+        continue_on_error: true
+        data:
+          auto_play: true
+          source_player: '{{ owner }}'
+        target:
+          entity_id: '{{ keep[0] }}'
+      - alias: 'A move never ends silent: play there if it has not started'
+        wait_template: '{{ is_state(keep[0], ''playing'') }}'
+        timeout:
+          seconds: 8
+        continue_on_timeout: true
+      - if:
+        - condition: template
+          value_template: '{{ not is_state(keep[0], ''playing'') }}'
+        then:
+        - action: media_player.media_play
+          continue_on_error: true
+          target:
+            entity_id: '{{ keep[0] }}'
+      - if:
+        - condition: template
+          value_template: '{{ keep | length > 1 }}'
+        then:
+        - delay:
+            seconds: 2
+        - action: media_player.join
+          continue_on_error: true
+          data:
+            group_members: '{{ keep[1:] }}'
+          target:
+            entity_id: '{{ keep[0] }}'
+    - stop: Left.
   - if:
     - condition: template
       value_template: '{{ not player_group and lead in leaving and staying | length > 0 and states(lead) in [''playing'',
@@ -145,6 +242,19 @@ sequence:
         source_player: '{{ lead }}'
       target:
         entity_id: '{{ staying[0] }}'
+    - alias: 'A move never ends silent: play there if it has not started'
+      wait_template: '{{ is_state(staying[0], ''playing'') }}'
+      timeout:
+        seconds: 8
+      continue_on_timeout: true
+    - if:
+      - condition: template
+        value_template: '{{ not is_state(staying[0], ''playing'') }}'
+      then:
+      - action: media_player.media_play
+        continue_on_error: true
+        target:
+          entity_id: '{{ staying[0] }}'
     - if:
       - condition: template
         value_template: '{{ staying | length > 1 }}'
@@ -208,15 +318,19 @@ sequence:
 - repeat:
     for_each: '{{ groups }}'
     sequence:
-    - alias: 'Moving to a Music Assistant group: free its speakers held by another group first'
+    - alias: 'Moving to a Music Assistant group: free all of its rooms (Whole House: every room) held by another group first'
       if:
       - condition: template
         value_template: '{{ is_state_attr(repeat.item, ''mass_player_type'', ''group'') }}'
       then:
       - variables:
-          busy: '{% set ns = namespace(out=[]) %}{% for m in state_attr(repeat.item, ''group_members'') or [] %}{% if m !=
-            lead and (state_attr(m, ''group_members'') or []) | length > 1 %}{% set ns.out = ns.out + [m] %}{% endif %}{%
-            endfor %}{{ ns.out }}'
+          wh_full: '{{ [''media_player.living_room_google_home_2'', ''media_player.stereo_3'', ''media_player.living_room_tv_4'',
+            ''media_player.aftr_64_formal_room_airplay'', ''media_player.family_room_display''] if repeat.item == ''media_player.whole_house''
+            else (state_attr(repeat.item, ''group_members'') or []) }}'
+      - variables:
+          busy: '{% set ns = namespace(out=[]) %}{% for m in wh_full %}{% if m != lead and (state_attr(m, ''group_members'')
+            or []) | length > 1 and m not in (state_attr(repeat.item, ''group_members'') or []) %}{% set ns.out = ns.out +
+            [m] %}{% endif %}{% endfor %}{{ ns.out }}'
       - if:
         - condition: template
           value_template: '{{ busy | length > 0 }}'
@@ -238,6 +352,40 @@ sequence:
         source_player: '{{ lead }}'
       target:
         entity_id: '{{ repeat.item }}'
+    - alias: 'Whole House: put back every room it is missing'
+      if:
+      - condition: template
+        value_template: '{{ repeat.item == ''media_player.whole_house'' }}'
+      then:
+      - delay:
+          seconds: 2
+      - variables:
+          missing: '{{ [''media_player.living_room_google_home_2'', ''media_player.stereo_3'', ''media_player.living_room_tv_4'',
+            ''media_player.aftr_64_formal_room_airplay'', ''media_player.family_room_display''] | reject(''in'', state_attr(repeat.item,
+            ''group_members'') or []) | reject(''is_state'', ''unavailable'') | list }}'
+      - if:
+        - condition: template
+          value_template: '{{ missing | length > 0 }}'
+        then:
+        - action: media_player.join
+          continue_on_error: true
+          data:
+            group_members: '{{ missing }}'
+          target:
+            entity_id: '{{ repeat.item }}'
+    - alias: 'A move never ends silent: play there if it has not started'
+      wait_template: '{{ is_state(repeat.item, ''playing'') }}'
+      timeout:
+        seconds: 8
+      continue_on_timeout: true
+    - if:
+      - condition: template
+        value_template: '{{ not is_state(repeat.item, ''playing'') }}'
+      then:
+      - action: media_player.media_play
+        continue_on_error: true
+        target:
+          entity_id: '{{ repeat.item }}'
 - if:
   - condition: template
     value_template: '{{ joinable | length > 0 }}'
@@ -260,6 +408,19 @@ sequence:
       source_player: '{{ lead }}'
     target:
       entity_id: '{{ moves[0] }}'
+  - alias: 'A move never ends silent: play there if it has not started'
+    wait_template: '{{ is_state(moves[0], ''playing'') }}'
+    timeout:
+      seconds: 8
+    continue_on_timeout: true
+  - if:
+    - condition: template
+      value_template: '{{ not is_state(moves[0], ''playing'') }}'
+    then:
+    - action: media_player.media_play
+      continue_on_error: true
+      target:
+        entity_id: '{{ moves[0] }}'
   - variables:
       more: '{% set ns = namespace(out=[]) %}{% if ((state_attr(moves[0], ''supported_features'') | int(0)) // 524288) % 2
         == 1 %}{% for r in moves[1:] %}{% if ((state_attr(r, ''supported_features'') | int(0)) // 524288) % 2 == 1 %}{% set

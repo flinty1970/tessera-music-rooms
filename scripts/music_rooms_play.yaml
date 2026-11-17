@@ -7,53 +7,90 @@
 # script, Edit in YAML, paste this), then give each screen `play_script: script.music_rooms_play` (see the README).
 alias: Music rooms – play exactly
 description: Plays the Music Assistant item whose address starts as the screen's cut one.
-mode: parallel
-max: 20
 fields:
-  player:
-    description: The media player to play on.
-  start:
-    description: The item's address as far as the screen has it.
-  name:
-    description: The item's name.
-  kind:
-    description: playlist, artist, album, track, radio or podcast.
   artist:
     description: The item's artist, for a track or an album.
   entry:
     description: The Music Assistant config entry.
+  kind:
+    description: playlist, artist, album, track, radio or podcast.
+  name:
+    description: The item's name.
+  player:
+    description: The media player to play on.
+  start:
+    description: The item's address as far as the screen has it.
+max: 20
+mode: parallel
 sequence:
-  - action: music_assistant.search
-    data:
-      config_entry_id: "{{ entry }}"
-      name: "{{ name }}"
-      media_type: ["{{ kind }}"]
-      limit: 25
-      library_only: false
-    response_variable: found
+- alias: 'Whole House plays everywhere: free its rooms held by another group, then put back every room it is missing'
+  if:
+  - condition: template
+    value_template: '{{ player == ''media_player.whole_house'' }}'
+  then:
   - variables:
-      exact: >-
-        {% set lists = {'playlist': 'playlists', 'artist': 'artists', 'album': 'albums', 'track': 'tracks',
-                        'radio': 'radio', 'podcast': 'podcasts'} %}
-        {% set ns = namespace(uri='') %}
-        {% for item in found.get(lists.get(kind, ''), []) if ns.uri == '' and (item.uri | default('')).startswith(start) %}
-          {% set ns.uri = item.uri %}
-        {% endfor %}
-        {{ ns.uri }}
+      busy: '{% set ns = namespace(out=[]) %}{% for m in [''media_player.living_room_google_home_2'', ''media_player.stereo_3'',
+        ''media_player.living_room_tv_4'', ''media_player.aftr_64_formal_room_airplay'', ''media_player.family_room_display'']
+        %}{% if (state_attr(m, ''group_members'') or []) | length > 1 and m not in (state_attr(player, ''group_members'')
+        or []) %}{% set ns.out = ns.out + [m] %}{% endif %}{% endfor %}{{ ns.out }}'
   - if:
-      - condition: template
-        value_template: "{{ exact | trim != '' }}"
+    - condition: template
+      value_template: '{{ busy | length > 0 }}'
     then:
-      - action: media_player.play_media
-        target:
-          entity_id: "{{ player }}"
-        data:
-          media_content_id: "{{ exact | trim }}"
-          media_content_type: "{{ kind }}"
-    else:
-      - action: music_assistant.play_media
-        target:
-          entity_id: "{{ player }}"
-        data:
-          media_id: "{{ name }}"
-          media_type: "{{ kind }}"
+    - action: media_player.unjoin
+      continue_on_error: true
+      target:
+        entity_id: '{{ busy }}'
+    - action: media_player.media_stop
+      continue_on_error: true
+      target:
+        entity_id: '{{ busy | select(''is_state'', ''playing'') | list }}'
+    - delay:
+        seconds: 1
+  - variables:
+      missing: '{{ [''media_player.living_room_google_home_2'', ''media_player.stereo_3'', ''media_player.living_room_tv_4'',
+        ''media_player.aftr_64_formal_room_airplay'', ''media_player.family_room_display''] | reject(''in'', state_attr(player,
+        ''group_members'') or []) | reject(''is_state'', ''unavailable'') | list }}'
+  - if:
+    - condition: template
+      value_template: '{{ missing | length > 0 }}'
+    then:
+    - action: media_player.join
+      continue_on_error: true
+      data:
+        group_members: '{{ missing }}'
+      target:
+        entity_id: '{{ player }}'
+    - delay:
+        seconds: 2
+- action: music_assistant.search
+  data:
+    config_entry_id: '{{ entry }}'
+    library_only: false
+    limit: 25
+    media_type:
+    - '{{ kind }}'
+    name: '{{ name }}'
+  response_variable: found
+- variables:
+    exact: '{% set lists = {''playlist'': ''playlists'', ''artist'': ''artists'', ''album'': ''albums'', ''track'': ''tracks'',
+      ''radio'': ''radio'', ''podcast'': ''podcasts''} %}{% set ns = namespace(uri='''') %}{% for item in found.get(lists.get(kind,
+      ''''), []) if ns.uri == '''' and (item.uri | default('''')).startswith(start) %}{% set ns.uri = item.uri %}{% endfor
+      %}{{ ns.uri }}'
+- else:
+  - action: music_assistant.play_media
+    data:
+      media_id: '{{ name }}'
+      media_type: '{{ kind }}'
+    target:
+      entity_id: '{{ player }}'
+  if:
+  - condition: template
+    value_template: '{{ exact | trim != '''' }}'
+  then:
+  - action: media_player.play_media
+    data:
+      media_content_id: '{{ exact | trim }}'
+      media_content_type: '{{ kind }}'
+    target:
+      entity_id: '{{ player }}'
