@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.8
+
+- Rooms shows the real group: a speaker that plays in the same group as the room in charge (a Cast group, joined
+  here, on the tablet or in the Google Home app) is ticked, and unticked it leaves.
+
 ## 0.13.7
 
 - Volume: tap the % between the volume keys to go through all the rooms it plays in ("All 30 %"), then each room on

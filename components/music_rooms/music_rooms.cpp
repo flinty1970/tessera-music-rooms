@@ -162,7 +162,16 @@ class Players : public tessera::InPsram {
       const int owner = owner_of(i);
       if (owner >= 0) return 1u << owner;
     }
-    return picked;
+    // Rooms playing in the same queue as a room picked are in its group (a Cast group, joined here or elsewhere):
+    // they show ticked, and unticked they leave it.
+    uint16_t with = picked;
+    for (int i = 0; i < SLOTS; ++i) {
+      if (!(picked & (1u << i)) || !rooms_[i].queue[0] || !on(rooms_[i])) continue;
+      for (int j = 0; j < SLOTS; ++j)
+        if (!rooms_[j].group && rooms_[j].used() && on(rooms_[j]) && !strcmp(rooms_[j].queue, rooms_[i].queue))
+          with |= 1u << j;
+    }
+    return with;
   }
   // The slot of the playing Music Assistant group whose queue this room plays from, -1 when none.
   int owner_of(int slot) const {
@@ -233,6 +242,12 @@ class Players : public tessera::InPsram {
   void choose(uint16_t rooms) {
     const uint16_t before = chosen();
     rooms &= used_mask();
+    // A room unticked leaves its group: what it plays is asked again before it counts as in a group.
+    for (int i = 0; i < SLOTS; ++i)
+      if ((before & ~rooms & (1u << i)) && !rooms_[i].group) {
+        rooms_[i].queue[0] = '\0';
+        soon(rooms_[i]);
+      }
     plugin_->set_chosen(index_, rooms ? rooms : 1);
     note_ = Note::NONE;
     follow(before);
