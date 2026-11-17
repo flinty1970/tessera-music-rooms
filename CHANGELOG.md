@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.10
+
+- Tapping Whole House while music plays elsewhere no longer shows the "can't play in step" popup meant for a screen's
+  own speaker.
+
 ## 0.13.9
 
 - Tapping Whole House while music plays in another room moves the music to Whole House (all its rooms), instead of

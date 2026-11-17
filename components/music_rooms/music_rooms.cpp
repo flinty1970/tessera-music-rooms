@@ -1869,8 +1869,9 @@ class MusicCard : public tessera::Card {
         // puts back the group's rooms and presses play): picking it alone would only choose it for the next item.
         const int from = tile.lead_slot();
         if (tile.room(slot).group && from != slot && Players::on(tile.room(from)) && plugin_->join_script()[0]) {
+          // No popup: Whole House takes the music over with all its rooms; "can't play in step" is for a screen's
+          // own speaker.
           if (!tile.move_to(slot)) return;
-          plugin_->explain(tile.room(slot).name, tile.room(from).name, true);
           tile.focus(slot);
           page_no_ = 0;
           show(View::NOW);
