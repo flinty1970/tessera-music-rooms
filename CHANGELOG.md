@@ -4,6 +4,9 @@
 
 - Whole House means all its rooms: unticking one of its speakers unticks Whole House too, and the other speakers go on
   playing as a group of their own. Tick Whole House again to bring every room back.
+- While Whole House plays, any room that is not one of its speakers says "Moves here": a tap moves the music there alone.
+- Only Cast speakers group: AirPlay speakers and DLNA players (a TV) say "Moves here" and take the music alone, as Music
+  Assistant cannot keep them in step with Cast.
 - The volume's rooms (tap the %) are every room playing the same song, also before the screen has learned the group.
 - Tapping Whole House while music plays elsewhere no longer shows the "can't play in step" popup meant for a screen's
   own speaker.

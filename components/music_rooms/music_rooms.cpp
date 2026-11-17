@@ -78,6 +78,7 @@ struct Room {
   char asked_state[16] = "";
   // The Music Assistant queue it plays from, from its last answer: a speaker in Whole House plays Whole House's queue.
   char queue[49] = "";
+  bool solo = false;     // its queue says AirPlay ("ap...") or DLNA ("up..."): it plays alone, never in a Cast group
   bool used() const { return id[0] != '\0'; }
 };
 
@@ -617,6 +618,10 @@ class Players : public tessera::InPsram {
       r.shuffle = on[0] ? (!strcmp(on, "True") || !strcmp(on, "true") || !strcmp(on, "1")) : -1;
       put(r.repeat, q["repeat"] | "");
       put(r.queue, q["queue"] | "");
+      if (!strncmp(r.queue, "ap", 2) || !strncmp(r.queue, "up", 2)) {
+        r.solo = true;
+        r.sync = false;
+      }
       return true;
     }
     return false;
@@ -688,7 +693,10 @@ class Players : public tessera::InPsram {
     room.group = !strcmp(a["mass_player_type"] | "", "group");
     // MediaPlayerEntityFeature.GROUPING: Music Assistant can join it to another player (a Cast, a Sonos), where a
     // player it reaches through another integration (a screen's own speaker) plays alone.
-    room.sync = ((a["supported_features"] | 0u) & 524288u) != 0;
+    // Only Cast speakers play in step with each other here: an AirPlay player (its entity named so, or a queue "ap...")
+    // and a DLNA one (a queue "up...", such as a TV) take the music alone instead, as Music Assistant cannot keep them
+    // in step with Cast.
+    room.sync = ((a["supported_features"] | 0u) & 524288u) != 0 && !strstr(room.id, "airplay") && !room.solo;
   }
 
   MusicRooms *plugin_;
@@ -1675,11 +1683,11 @@ class MusicCard : public tessera::Card {
         continue;
       }
       if (tile.group_playing() && listed[at] != tile.lead_slot() && !r.group) {
-        // Whole House plays: its speakers that play are ticked; a tap takes one out or puts one in. One that cannot be
-        // grouped (a screen's own speaker) cannot join it: the music moves there instead, as it says.
+        // Whole House plays: its speakers that play are ticked, and a tap takes one out; any other room takes the music
+        // alone, as it says.
+        const bool in = tile.in_group_now(listed[at]);
         row(i, ICON_SPEAKER, r.name,
-            gone(r.state) ? plugin_->text("unavailable") : !r.sync ? plugin_->text("moves_here") : "",
-            tile.in_group_now(listed[at]), gone(r.state));
+            gone(r.state) ? plugin_->text("unavailable") : !in ? plugin_->text("moves_here") : "", in, gone(r.state));
         continue;
       }
       const Players::Add add = tile.can_add(listed[at]);
@@ -1868,10 +1876,16 @@ class MusicCard : public tessera::Card {
           return;
         }
         // A speaker of Whole House unticked: Whole House is no longer whole, so it unticks too and the other speakers go
-        // on as a group of their own. A speaker ticked joins Whole House.
-        if (tile.in_group_now(slot)) tile.ungroup(1u << slot);
-        else tile.toggle_in_group(slot);
-        paint();
+        // on as a group of their own. Any other room takes the music alone.
+        if (tile.in_group_now(slot)) {
+          tile.ungroup(1u << slot);
+          paint();
+          return;
+        }
+        if (!tile.move_to(slot)) return;
+        tile.focus(slot);
+        page_no_ = 0;
+        show(View::NOW);
         return;
       }
       const Players::Add add = tile.can_add(slot);
