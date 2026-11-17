@@ -70,6 +70,29 @@ sequence:
     - condition: template
       value_template: '{{ to != lead and states(lead) in [''playing'', ''paused'', ''buffering''] }}'
     then:
+    - alias: 'Moving to a Music Assistant group: free its speakers held by another group first'
+      if:
+      - condition: template
+        value_template: '{{ is_state_attr(to, ''mass_player_type'', ''group'') }}'
+      then:
+      - variables:
+          busy: '{% set ns = namespace(out=[]) %}{% for m in state_attr(to, ''group_members'') or [] %}{% if m != lead and
+            (state_attr(m, ''group_members'') or []) | length > 1 %}{% set ns.out = ns.out + [m] %}{% endif %}{% endfor %}{{
+            ns.out }}'
+      - if:
+        - condition: template
+          value_template: '{{ busy | length > 0 }}'
+        then:
+        - action: media_player.unjoin
+          continue_on_error: true
+          target:
+            entity_id: '{{ busy }}'
+        - action: media_player.media_stop
+          continue_on_error: true
+          target:
+            entity_id: '{{ busy | select(''is_state'', ''playing'') | list }}'
+        - delay:
+            seconds: 1
     - if:
       - condition: template
         value_template: '{{ to in group }}'
@@ -185,6 +208,29 @@ sequence:
 - repeat:
     for_each: '{{ groups }}'
     sequence:
+    - alias: 'Moving to a Music Assistant group: free its speakers held by another group first'
+      if:
+      - condition: template
+        value_template: '{{ is_state_attr(repeat.item, ''mass_player_type'', ''group'') }}'
+      then:
+      - variables:
+          busy: '{% set ns = namespace(out=[]) %}{% for m in state_attr(repeat.item, ''group_members'') or [] %}{% if m !=
+            lead and (state_attr(m, ''group_members'') or []) | length > 1 %}{% set ns.out = ns.out + [m] %}{% endif %}{%
+            endfor %}{{ ns.out }}'
+      - if:
+        - condition: template
+          value_template: '{{ busy | length > 0 }}'
+        then:
+        - action: media_player.unjoin
+          continue_on_error: true
+          target:
+            entity_id: '{{ busy }}'
+        - action: media_player.media_stop
+          continue_on_error: true
+          target:
+            entity_id: '{{ busy | select(''is_state'', ''playing'') | list }}'
+        - delay:
+            seconds: 1
     - action: music_assistant.transfer_queue
       continue_on_error: true
       data:
