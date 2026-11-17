@@ -464,12 +464,40 @@ class Players : public tessera::InPsram {
   }
   // The volume keys of Now playing: the room the keys act on, or with all_volume every room it plays in, each from its
   // own level so their balance stays.
-  bool all_volume() const { return all_volume_; }
-  void toggle_all_volume() { all_volume_ = !all_volume_; }
+  // A tap on the volume steps through: all of them, then each room it plays in, then all again.
+  // The rooms it plays in: Whole House's speakers that play in it, else the rooms ticked.
+  uint16_t volume_rooms() const {
+    uint16_t mask = 0;
+    if (group_playing()) {
+      for (int i = 0; i < SLOTS; ++i) if (in_group_now(i)) mask |= 1u << i;
+    } else {
+      for (int i = 0; i < SLOTS; ++i)
+        if ((chosen() & (1u << i)) && rooms_[i].used() && !gone(rooms_[i].state)) mask |= 1u << i;
+    }
+    return mask;
+  }
+  // The room the volume keys act on alone, -1 for all of them.
+  int volume_target() const {
+    if (volume_slot_ >= 0 && (volume_rooms() & (1u << volume_slot_)) && __builtin_popcount(volume_rooms()) > 1)
+      return volume_slot_;
+    return -1;
+  }
+  bool all_volume() const { return volume_target() < 0 && __builtin_popcount(volume_rooms()) > 1; }
+  void toggle_all_volume() {
+    const uint16_t rooms = volume_rooms();
+    if (__builtin_popcount(rooms) < 2) { volume_slot_ = -1; return; }
+    int next = -1;
+    for (int i = volume_target() + 1; i < SLOTS; ++i)
+      if (rooms & (1u << i)) { next = i; break; }
+    volume_slot_ = next;
+  }
   void step_volume_keys(int by) {
-    if (!all_volume_) { step_volume(by); return; }
-    for (int i = 0; i < SLOTS; ++i)
-      if ((chosen() & (1u << i)) && rooms_[i].used()) step_volume(by, i);
+    const int one = volume_target();
+    if (one >= 0) { step_volume(by, one); return; }
+    const uint16_t rooms = volume_rooms();
+    if (__builtin_popcount(rooms) < 2) { step_volume(by); return; }
+    // Each from its own level, so their balance stays.
+    for (int i = 0; i < SLOTS; ++i) if (rooms & (1u << i)) step_volume(by, i);
   }
   void step_volume(int by, int slot = -1) {
     Room &lead = rooms_[slot < 0 ? lead_slot() : slot];
@@ -612,7 +640,8 @@ class Players : public tessera::InPsram {
   char library_[49] = "";
   char open_on_[16] = "kinds";
   char started_title_[49] = "", started_state_[16] = "";
-  bool several_ = false, all_volume_ = false;
+  bool several_ = false;
+  int volume_slot_ = -1;
   uint32_t started_at_ = 0;
   Note note_ = Note::NONE;
 };
@@ -758,7 +787,12 @@ class MusicCard : public tessera::Card {
     key_ = std::max(ui::mm(10), ui::line_height(Font::BODY_LARGE) + ui::px(12));
     // The keys of Now playing: previous, play, next, shuffle, repeat, and the volume between its two keys, in a row as
     // large as the width allows, never smaller than a finger.
-    const int volume_w = ui::text_width(tessera::fill(plugin_->text("volume_all"), "n", "100").c_str(), Font::BODY_LARGE) + ui::px(8);
+    // Wide enough for "All 100 %" and a short room name with its volume ("Google Home 100 %"), at most a third.
+    // The keys keep their room first: a narrow screen cuts the name with dots.
+    const int all_w = ui::text_width(tessera::fill(plugin_->text("volume_all"), "n", "100").c_str(), Font::BODY_LARGE) + ui::px(8);
+    const int name_w = ui::text_width("Google Home 100 %", Font::BODY_LARGE) + ui::px(8);
+    const int spare = width_ - 7 * std::max(ui::mm(7), std::min(key_, ui::mm(9))) - 8 * gap_;
+    const int volume_w = std::max(all_w, std::min({name_w, spare, width_ / 3}));
     round_ = std::max(ui::mm(7), std::min(key_, (width_ - volume_w - 8 * gap_) / 7));
 
     // The head: on Now playing the rooms key and the library key; in the lists the rooms it plays in.
@@ -850,6 +884,7 @@ class MusicCard : public tessera::Card {
       }
       if (i == 6) {
         volume_ = ui::label(parent_, Font::BODY_LARGE, theme::INK);
+        lv_label_set_long_mode(volume_, LV_LABEL_LONG_DOT);
         lv_obj_set_size(volume_, volume_w, ui::line_height(Font::BODY_LARGE));
         lv_obj_set_style_text_align(volume_, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_pos(volume_, x, keys_y + (round_ - ui::line_height(Font::BODY_LARGE)) / 2);
@@ -1403,10 +1438,17 @@ class MusicCard : public tessera::Card {
     ui::set_text(artist_, Players::byline(lead));
     const bool playing = !strcmp(lead.state, "playing");
     set_icon(key_icon_[1], playing ? ICON_PAUSE : ICON_PLAY);
-    char words[16] = "";
-    if (lead.volume >= 0) snprintf(words, sizeof(words), "%d", lead.volume);
-    ui::set_text(volume_, lead.volume >= 0 ? tessera::fill(plugin_->text(tile.all_volume() ? "volume_all" : "volume"), "n", words)
-                                           : std::string("-"));
+    {
+      // The volume of all of them, or of the one room the keys act on: "Stereo 35 %".
+      const int one = tile.volume_target();
+      const Room &v = one >= 0 ? tile.room(one) : lead;
+      char words[16] = "";
+      if (v.volume >= 0) snprintf(words, sizeof(words), "%d", v.volume);
+      std::string text = v.volume >= 0 ? tessera::fill(plugin_->text(tile.all_volume() ? "volume_all" : "volume"), "n", words)
+                                       : std::string("-");
+      if (one >= 0) text = short_name(v.name) + " " + text;
+      ui::set_text(volume_, text);
+    }
     // Shuffle and repeat in the accent while on; repeat one with its own icon.
     ui::set_color(key_icon_[3], lead.shuffle == 1 ? theme::ACCENT : theme::MUTED);
     set_icon(key_icon_[4], !strcmp(lead.repeat, "one") ? ICON_REPEAT_ONE : ICON_REPEAT);
@@ -1517,6 +1559,16 @@ class MusicCard : public tessera::Card {
       row(i, playing ? ICON_PLAY : paused ? ICON_PAUSE : ICON_SPEAKER, r.name, what, slot == lead, gone(r.state));
     }
     pager(entries_);
+  }
+
+  // A room's name without its house room and its kind: "Living Room – Stereo (Chromecast Audio)" is "Stereo".
+  static std::string short_name(const char *name) {
+    std::string n = name;
+    const size_t dash = n.find(" \xE2\x80\x93 ");  // " – "
+    if (dash != std::string::npos) n = n.substr(dash + 5);
+    const size_t paren = n.find(" (");
+    if (paren != std::string::npos) n = n.substr(0, paren);
+    return n;
   }
 
   // What a room plays and who, or that nothing plays, or that Home Assistant cannot reach it.
