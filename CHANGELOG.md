@@ -2,6 +2,9 @@
 
 ## 0.13.10
 
+- Whole House means all its rooms: unticking one of its speakers unticks Whole House too, and the other speakers go on
+  playing as a group of their own. Tick Whole House again to bring every room back.
+- The volume's rooms (tap the %) are every room playing the same song, also before the screen has learned the group.
 - Tapping Whole House while music plays elsewhere no longer shows the "can't play in step" popup meant for a screen's
   own speaker.
 

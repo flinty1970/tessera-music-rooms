@@ -464,10 +464,17 @@ class Players : public tessera::InPsram {
 
   // Whole House unticked while it plays: the music goes on in the speakers that play in it, as a group of their own
   // (the join script's leave of the group player), and those speakers stay ticked.
-  bool ungroup() {
+  // With drop, those speakers leave too: Whole House means all its rooms, so a speaker unticked unticks it, and the
+  // others go on as a group of their own.
+  bool ungroup(uint16_t drop = 0) {
     const int lead = lead_slot();
-    const uint16_t keep = volume_rooms();
-    if (!leave(lead, 1u << lead)) return false;
+    const uint16_t keep = volume_rooms() & ~drop;
+    if (!leave(lead, (1u << lead) | drop)) return false;
+    for (int i = 0; i < SLOTS; ++i)
+      if (drop & (1u << i)) {
+        rooms_[i].queue[0] = '\0';
+        soon(rooms_[i]);
+      }
     for (int i = 0; i < SLOTS; ++i)
       if (keep & (1u << i)) {
         rooms_[i].queue[0] = '\0';
@@ -517,6 +524,13 @@ class Players : public tessera::InPsram {
       for (int i = 0; i < SLOTS; ++i)
         if ((chosen() & (1u << i)) && rooms_[i].used() && !gone(rooms_[i].state)) mask |= 1u << i;
     }
+    // Every room that plays the same song as the room in charge plays with it, whatever the screen knows yet of the
+    // group (it learns a group from each room's queue, asked now and then).
+    const Room &l = rooms_[lead_slot()];
+    if (l.title[0] && on(l))
+      for (int i = 0; i < SLOTS; ++i)
+        if (rooms_[i].used() && !rooms_[i].group && !strcmp(rooms_[i].state, "playing") && !strcmp(rooms_[i].title, l.title))
+          mask |= 1u << i;
     return mask;
   }
   // The room the volume keys act on alone, -1 for all of them.
@@ -1853,7 +1867,10 @@ class MusicCard : public tessera::Card {
           show(View::NOW);
           return;
         }
-        tile.toggle_in_group(slot);
+        // A speaker of Whole House unticked: Whole House is no longer whole, so it unticks too and the other speakers go
+        // on as a group of their own. A speaker ticked joins Whole House.
+        if (tile.in_group_now(slot)) tile.ungroup(1u << slot);
+        else tile.toggle_in_group(slot);
         paint();
         return;
       }
