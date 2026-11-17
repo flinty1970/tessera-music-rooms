@@ -47,6 +47,8 @@ class MusicRooms : public Component, public tessera::Plugin {
 
   // A popup: this room cannot play together with what plays in that one.
   void explain(const char *room, const char *lead, bool moved);
+  // The rooms it plays in, in a popup (a tap on "Plays in Kitchen + 2").
+  void where(const char *head, const char *rooms);
 
   MusicCard *card_ = nullptr;  // the card that is open, to hand it the library's answers
 

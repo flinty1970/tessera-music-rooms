@@ -4,6 +4,7 @@
 
 - Tapping Whole House while music plays in another room moves the music to Whole House (all its rooms), instead of
   only choosing it for the next song.
+- On Rooms, tap "Plays in Kitchen + 2" at the top: a popup lists every room it plays in.
 
 ## 0.13.8
 

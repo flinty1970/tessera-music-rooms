@@ -296,6 +296,17 @@ class Players : public tessera::InPsram {
     for (int i = 0; i < SLOTS; ++i)
       if (groups & (1u << i)) { focus(i); break; }
   }
+  // Every room it plays in, one a line: Whole House's speakers that play in it, else the rooms picked that play.
+  std::string where_text() const {
+    std::string lines;
+    const uint16_t rooms = volume_rooms();
+    for (int i = 0; i < SLOTS; ++i) {
+      if (!(rooms & (1u << i)) || !on(rooms_[i])) continue;
+      if (!lines.empty()) lines += '\n';
+      lines += rooms_[i].name;
+    }
+    return lines;
+  }
   // "Kitchen", "Kitchen + 2" or "All rooms".
   std::string rooms_text() const {
     const uint16_t picked = chosen();
@@ -1180,6 +1191,11 @@ class MusicCard : public tessera::Card {
     }
     if (view_ == View::SEARCH) {
       type_at(p);
+      return;
+    }
+    if (view_ == View::ROOMS && inside(head_, p)) {
+      // "Plays in Kitchen + 2": the rooms it plays in, in a popup.
+      plugin_->where(tile->rooms_text().c_str(), tile->where_text().c_str());
       return;
     }
 #if LV_USE_ROLLER
@@ -2278,6 +2294,37 @@ class CannotJoin : public tessera::Popup {
   char room_[49] = "", lead_[49] = "";
   lv_obj_t *icon_{}, *title_{}, *body_{};
 };
+
+// Where it plays: the rooms of "Plays in Kitchen + 2", one a line.
+class PlaysIn : public tessera::Popup {
+ public:
+  PlaysIn(MusicRooms *plugin, const std::string &head, const std::string &rooms) : plugin_(plugin), head_(head), rooms_(rooms) {}
+  void open(const tessera::PopupContext &c) override {
+    const int gap = ui::px(10);
+    icon_ = ui::label(c.parent, Font::ICON, theme::MUTED);
+    ui::set_text(icon_, ui::icon(ICON_ROOMS));
+    lv_obj_set_pos(icon_, 0, 0);
+    title_ = ui::text(c.parent, Font::TITLE, theme::INK);
+    lv_obj_set_width(title_, std::max(1, c.width - c.key - gap - c.corner));
+    lv_obj_set_pos(title_, c.key + gap, 0);
+    ui::set_text(title_, tessera::fill(plugin_->text("plays_in"), "rooms", head_));
+    body_ = ui::text(c.parent, Font::BODY_LARGE, theme::INK);
+    lv_obj_set_width(body_, c.width);
+    lv_obj_set_pos(body_, 0, std::max(c.key, ui::line_height(Font::TITLE) * 2) + gap);
+    ui::set_text(body_, rooms_.empty() ? std::string(plugin_->text("where_none")) : rooms_);
+  }
+  void on_tap() override { tessera::close_popup(plugin_); }
+
+ private:
+  MusicRooms *plugin_;
+  std::string head_, rooms_;
+  lv_obj_t *icon_{}, *title_{}, *body_{};
+};
+
+void MusicRooms::where(const char *head, const char *rooms) {
+  std::string h = head, r = rooms;
+  tessera::show_popup(this, [this, h, r]() { return new PlaysIn(this, h, r); });
+}
 
 void MusicRooms::explain(const char *room, const char *lead, bool moved) {
   std::string r = room, l = lead;
