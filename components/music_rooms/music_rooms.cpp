@@ -1348,13 +1348,15 @@ class MusicCard : public tessera::Card {
   }
 
   // A row: an icon at the left, the words, something muted at the right and a tick.
+  // home: a speaker playing in Whole House, in Whole House's own colour (the mark's green) where other rooms take the
+  // accent.
   void row(int i, uint32_t icon, const std::string &words, const std::string &side, bool ticked, bool faded = false,
-           bool more = false) {
+           bool more = false, bool home = false) {
     Row &r = row_[i];
     hide(r.box, false);
     const int pad = gap_ + ui::px(4), icon_w = lv_obj_get_width(r.icon), mark_w = lv_obj_get_width(r.mark);
     set_icon(r.icon, icon);
-    ui::set_color(r.icon, ticked ? theme::ACCENT : theme::MUTED);
+    ui::set_color(r.icon, home ? theme::MARK_GREEN : ticked ? theme::ACCENT : theme::MUTED);
     lv_obj_set_pos(r.icon, pad, (row_h_ - ui::line_height(Font::ICON_SMALL)) / 2);
     const int side_w = side.empty() ? 0 : std::min(ui::text_width(side, Font::BODY) + ui::px(4), width_ * 2 / 5);
     const int text_x = pad + icon_w + gap_;
@@ -1367,7 +1369,7 @@ class MusicCard : public tessera::Card {
     ui::set_text(r.text, words);
     ui::set_color(r.text, faded ? theme::SUBTLE : theme::INK);
     set_icon(r.mark, more ? ICON_RIGHT : ICON_CHECK);
-    ui::set_color(r.mark, more ? theme::MUTED : theme::ACCENT);
+    ui::set_color(r.mark, more ? theme::MUTED : home ? theme::MARK_GREEN : theme::ACCENT);
     hide(r.mark, !ticked && !more);
     lv_obj_set_pos(r.mark, width_ - pad - mark_w, (row_h_ - ui::line_height(Font::ICON_SMALL)) / 2);
   }
@@ -1674,7 +1676,7 @@ class MusicCard : public tessera::Card {
       const Room &r = tile.room(listed[at]);
       if (tile.group_playing() && listed[at] == tile.lead_slot()) {
         // Whole House itself: ticked; unticked, it asks for the one room to go on in.
-        row(i, ICON_SPEAKER, r.name, narrow_ ? plugin_->text("pick_one") : "", !narrow_, false);
+        row(i, ICON_SPEAKER, r.name, narrow_ ? plugin_->text("pick_one") : "", !narrow_, false, false, !narrow_);
         continue;
       }
       if (tile.group_playing() && narrow_ && !r.group) {
@@ -1687,7 +1689,8 @@ class MusicCard : public tessera::Card {
         // alone, as it says.
         const bool in = tile.in_group_now(listed[at]);
         row(i, ICON_SPEAKER, r.name,
-            gone(r.state) ? plugin_->text("unavailable") : !in ? plugin_->text("moves_here") : "", in, gone(r.state));
+            gone(r.state) ? plugin_->text("unavailable") : !in ? plugin_->text("moves_here") : "", in, gone(r.state), false,
+            in);
         continue;
       }
       const Players::Add add = tile.can_add(listed[at]);

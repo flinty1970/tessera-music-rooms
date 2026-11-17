@@ -7,6 +7,7 @@
 - While Whole House plays, any room that is not one of its speakers says "Moves here": a tap moves the music there alone.
 - Only Cast speakers group: AirPlay speakers and DLNA players (a TV) say "Moves here" and take the music alone, as Music
   Assistant cannot keep them in step with Cast.
+- While Whole House plays, it and its speakers are ticked in green on Rooms, other rooms in the accent colour.
 - The volume's rooms (tap the %) are every room playing the same song, also before the screen has learned the group.
 - Tapping Whole House while music plays elsewhere no longer shows the "can't play in step" popup meant for a screen's
   own speaker.
