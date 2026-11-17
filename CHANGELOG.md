@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.9
+
+- Tapping Whole House while music plays in another room moves the music to Whole House (all its rooms), instead of
+  only choosing it for the next song.
+
 ## 0.13.8
 
 - Rooms shows the real group: a speaker that plays in the same group as the room in charge (a Cast group, joined

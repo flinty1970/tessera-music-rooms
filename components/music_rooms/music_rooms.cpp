@@ -1831,6 +1831,17 @@ class MusicCard : public tessera::Card {
       if (add == Players::Add::SWITCH) {
         // A Music Assistant group (Whole House) stands alone: it already holds its speakers, and the next item goes to
         // it only. A room while nothing plays in one that cannot be grouped: this room instead.
+        // While something plays elsewhere, a Music Assistant group tapped takes it over (the join script's move, which
+        // puts back the group's rooms and presses play): picking it alone would only choose it for the next item.
+        const int from = tile.lead_slot();
+        if (tile.room(slot).group && from != slot && Players::on(tile.room(from)) && plugin_->join_script()[0]) {
+          if (!tile.move_to(slot)) return;
+          plugin_->explain(tile.room(slot).name, tile.room(from).name, true);
+          tile.focus(slot);
+          page_no_ = 0;
+          show(View::NOW);
+          return;
+        }
         if (tile.room(slot).group) tile.choose(1u << slot);
         else tile.choose((tile.chosen() & ~tile.group_mask()) | (1u << slot));
         tile.focus(slot);
