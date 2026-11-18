@@ -216,8 +216,20 @@ class Players : public tessera::InPsram {
     return -1;
   }
   // The stream a room plays, "" while it plays nothing.
+  // The playing group that lists this speaker and plays its stream, -1 when none: a Google group's speakers report
+  // idle while the group plays, with the group's queue as theirs.
+  int group_holding(int slot) const {
+    const Room &r = rooms_[slot];
+    if (!r.used() || r.group || !r.stream[0]) return -1;
+    for (int j = 0; j < SLOTS; ++j) {
+      const Room &g = rooms_[j];
+      if (j != slot && g.used() && g.group && on(g) && (g.members & (1u << slot)) && !strcmp(g.stream, r.stream)) return j;
+    }
+    return -1;
+  }
   const char *stream_of(int slot) const {
     const Room &r = rooms_[slot];
+    if (r.used() && !on(r) && group_holding(slot) >= 0) return r.stream;
     if (!r.used() || !on(r)) return "";
     return r.stream[0] ? r.stream : r.id;
   }
@@ -298,6 +310,11 @@ class Players : public tessera::InPsram {
   // The slot of the playing Music Assistant group whose queue this room plays from, -1 when none.
   int owner_of(int slot) const {
     const Room &r = rooms_[slot];
+    // A speaker of a Google group that plays reports idle while the group plays: it is in the group all the same.
+    if (r.used() && !r.group) {
+      const int g = group_holding(slot);
+      if (g >= 0) return g;
+    }
     if (!r.used() || r.group || !r.queue[0] || !on(r)) return -1;
     for (int j = 0; j < SLOTS; ++j) {
       const Room &g = rooms_[j];
@@ -1937,7 +1954,10 @@ class MusicCard : public tessera::Card {
       std::string what;
       if (gone(room.state)) what = plugin_->text("unavailable");
       else if (stream[0]) {
-        const std::string song = playing_words(room.title[0] ? room : tile.room(lead));
+        // A speaker of a playing group reports idle: what plays there is the group's.
+        const int holder = Players::on(room) ? -1 : tile.group_holding(slot);
+        const Room &src = holder >= 0 ? tile.room(holder) : (room.title[0] ? room : tile.room(lead));
+        const std::string song = playing_words(src);
         what = mine || !lead_on ? song : tessera::fill(plugin_->text("other_stream"), "what", song);
       }
       const int name_h = ui::line_height(Font::BODY_LARGE), side_h = ui::line_height(Font::BODY);
@@ -2167,7 +2187,7 @@ class MusicCard : public tessera::Card {
         return;
       }
       // The room itself: the card holds what plays there (another stream, or the room alone).
-      if (Players::on(tile.room(slot)) && slot != tile.lead_slot()) {
+      if ((Players::on(tile.room(slot)) || tile.group_holding(slot) >= 0) && slot != tile.lead_slot()) {
         tile.focus(slot);
         page_no_ = 0;
         show(View::NOW);

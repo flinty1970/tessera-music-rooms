@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.14.1
+
+- A Google speaker group's speakers report "idle" while the group plays. Rooms now counts them as playing in the group:
+  they get the green outline, Remove and the song, and a screen whose own room is one of them follows the group instead
+  of saying "Not started".
+
 ## 0.14.0
 
 - Rooms works like the music dashboard: every room has its own keys. **Add** puts a speaker in with what plays,
