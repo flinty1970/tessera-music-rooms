@@ -17,7 +17,8 @@ constexpr uint32_t ICON_SPEAKER = 0xF04C3, ICON_ROOMS = 0xF0D38, ICON_PLAY = 0xF
                    ICON_NEXT = 0xF04AD, ICON_PREVIOUS = 0xF04AE, ICON_MINUS = 0xF075E, ICON_PLUS = 0xF075D,
                    ICON_CHECK = 0xF012C, ICON_RIGHT = 0xF0142, ICON_LEFT = 0xF0141, ICON_HEART = 0xF02D1,
                    ICON_MUSIC = 0xF0387, ICON_BACKSPACE = 0xF004D, ICON_ALL = 0xF075A,  // arrow-left: the icon font has no backspace
-                   ICON_SHUFFLE = 0xF049F, ICON_REPEAT = 0xF0456, ICON_REPEAT_ONE = 0xF0458;
+                   ICON_SHUFFLE = 0xF049F, ICON_REPEAT = 0xF0456, ICON_REPEAT_ONE = 0xF0458,
+                   ICON_MOVE = 0xF0054, ICON_CANNOT = 0xF0156, ICON_ADD = 0xF0415, ICON_REMOVE = 0xF0374;
 
 // A text into a fixed field, cut on a character boundary.
 static void put(char *field, size_t size, const char *text) {
@@ -79,6 +80,9 @@ struct Room {
   // The Music Assistant queue it plays from, from its last answer: a speaker in Whole House plays Whole House's queue.
   char queue[49] = "";
   bool solo = false;     // its queue says AirPlay ("ap...") or DLNA ("up..."): it plays alone, never in a Cast group
+  // Music Assistant's active_queue: rooms that play from the same one play one stream (a Google group and its speakers).
+  char stream[49] = "";
+  uint16_t members = 0;  // a group's speakers among the tile's rooms (group_members), one bit per slot
   bool used() const { return id[0] != '\0'; }
 };
 
@@ -138,14 +142,30 @@ class Players : public tessera::InPsram {
 
   // The tile's data, as on_state has it: its own player, and the rooms under `entities`.
   void read(JsonObjectConst data) {
-    if (!data["state"].isNull()) read(rooms_[0], data, true);
+    if (!data["state"].isNull()) {
+      read(rooms_[0], data, true);
+      rooms_[0].members = members_of(data["attributes"]["group_members"]);
+    }
     char key[9];
     for (int i = 1; i < SLOTS; ++i) {
       snprintf(key, sizeof(key), "room_%d", i);
       JsonObjectConst room = data["entities"][key];
       if (room.isNull()) put(rooms_[i].state, "");
-      else read(rooms_[i], room, false);
+      else {
+        read(rooms_[i], room, false);
+        rooms_[i].members = members_of(room["attributes"]["group_members"]);
+      }
     }
+  }
+  // The slots of a group's speakers, of those the tile lists.
+  uint16_t members_of(JsonVariantConst list) const {
+    uint16_t mask = 0;
+    for (JsonVariantConst m : list.as<JsonArrayConst>()) {
+      const char *id = m | "";
+      for (int i = 0; i < SLOTS; ++i)
+        if (rooms_[i].used() && !strcmp(rooms_[i].id, id)) mask |= 1u << i;
+    }
+    return mask;
   }
 
   const Room &room(int slot) const { return rooms_[slot]; }
@@ -156,8 +176,20 @@ class Players : public tessera::InPsram {
   // A room picked that plays in a Music Assistant group's queue (a speaker of Whole House) stands for that group: the
   // group is in charge of it, so the card shows and acts on the group.
   uint16_t chosen() const {
-    const uint16_t picked = plugin_->chosen(index_) & used_mask();
+    uint16_t picked = plugin_->chosen(index_) & used_mask();
     if (!picked) return 1;
+    // A Google group picked that no longer plays while its speakers do (a speaker added or taken out moved the music
+    // to another group, or to the speakers left): the card follows the music, to the group that plays or the speaker.
+    if (__builtin_popcount(picked) == 1) {
+      const int g = __builtin_ctz(picked);
+      if (rooms_[g].group && !on(rooms_[g]))
+        for (int m = 0; m < SLOTS; ++m) {
+          if (!(rooms_[g].members & (1u << m)) || !on(rooms_[m])) continue;
+          const int o = playing_group_of(m);
+          picked = 1u << (o >= 0 ? o : m);
+          break;
+        }
+    }
     for (int i = 0; i < SLOTS; ++i) {
       if (!(picked & (1u << i))) continue;
       const int owner = owner_of(i);
@@ -174,6 +206,95 @@ class Players : public tessera::InPsram {
     }
     return with;
   }
+  // The slot of a playing group that has this speaker and plays its stream, -1 when none.
+  int playing_group_of(int slot) const {
+    for (int j = 0; j < SLOTS; ++j) {
+      const Room &g = rooms_[j];
+      if (j == slot || !g.used() || !g.group || !on(g)) continue;
+      if ((g.members & (1u << slot)) || (g.stream[0] && !strcmp(g.stream, rooms_[slot].stream))) return j;
+    }
+    return -1;
+  }
+  // The stream a room plays, "" while it plays nothing.
+  const char *stream_of(int slot) const {
+    const Room &r = rooms_[slot];
+    if (!r.used() || !on(r)) return "";
+    return r.stream[0] ? r.stream : r.id;
+  }
+  bool same_stream(int a, int b) const {
+    const char *x = stream_of(a), *y = stream_of(b);
+    return x[0] && y[0] && !strcmp(x, y);
+  }
+  // A room's kind as the tablet colours it: a Google speaker group, a Google speaker (it groups), a screen's own speaker.
+  enum class Kind : uint8_t { GROUP, GOOGLE, SCREEN };
+  Kind kind_of_room(int slot) const {
+    const Room &r = rooms_[slot];
+    return r.group ? Kind::GROUP : r.sync ? Kind::GOOGLE : Kind::SCREEN;
+  }
+  // The key of a room on Rooms, as the tablet's: the room the card holds (Here), a speaker in its stream (Remove), one
+  // that can join it or a group that has the speaker that plays (Add), a group that would take another stream (Can't
+  // add); a screen's own speaker has no key, only Move here.
+  enum class Key : uint8_t { HERE, ADD, REMOVE, CANNOT, NONE };
+  Key key_of(int slot) const {
+    const int lead = lead_slot();
+    const Room &r = rooms_[slot];
+    if (!r.used()) return Key::NONE;
+    if (slot == lead) return Key::HERE;
+    const Room &l = rooms_[lead];
+    const Kind kind = kind_of_room(slot);
+    if (!on(l)) {
+      // Nothing plays: the rooms ticked play the next item; a group is picked alone.
+      if (kind == Kind::SCREEN && !several_) return Key::NONE;
+      return (chosen() & (1u << slot)) ? Key::REMOVE : Key::ADD;
+    }
+    if (kind == Kind::GROUP) {
+      // A group that has the speaker in charge (or, in charge, a group whose speakers it all has) spreads the music.
+      const bool has = (r.members & (1u << lead)) || (l.group && l.members && (l.members & ~r.members) == 0);
+      return has ? Key::ADD : Key::CANNOT;
+    }
+    if (kind == Kind::SCREEN) return Key::NONE;
+    if (same_stream(slot, lead)) return Key::REMOVE;
+    // A Google speaker joins a Google speaker or group; not a screen's speaker.
+    return kind_of_room(lead) == Kind::SCREEN ? Key::CANNOT : Key::ADD;
+  }
+  // Move here: every other room, while the room in charge plays.
+  bool can_move(int slot) const {
+    const int lead = lead_slot();
+    return plugin_->join_script()[0] && slot != lead && rooms_[slot].used() && !gone(rooms_[slot].state) &&
+           on(rooms_[lead]) && !(rooms_[slot].group && same_stream(slot, lead));
+  }
+  // The key of a room tapped. True when the card should show Now playing again (it holds another room now).
+  bool press_key(int slot) {
+    const Key key = key_of(slot);
+    const int lead = lead_slot();
+    const Room &l = rooms_[lead];
+    if (key == Key::HERE || key == Key::NONE || key == Key::CANNOT) return false;
+    if (!on(l)) {
+      if (rooms_[slot].group) { focus(slot); return false; }
+      uint16_t picked = chosen() ^ (1u << slot);
+      if (picked & (1u << slot)) picked &= ~group_mask();
+      if (picked) choose(picked);
+      return false;
+    }
+    if (rooms_[slot].group) {
+      // Spread: the music moves to the bigger group, in step.
+      if (!move_to(slot)) return false;
+      focus(slot);
+      return true;
+    }
+    if (l.group) {
+      // The group in charge gains or loses a speaker: Home Assistant swaps to the group that matches, or moves the
+      // music to the speakers left.
+      toggle_in_group(slot);
+      soon(rooms_[slot]);
+      return false;
+    }
+    if (key == Key::REMOVE) leave(lead, 1u << slot);
+    else join(lead, 1u << slot);
+    soon(rooms_[slot]);
+    return false;
+  }
+
   // The slot of the playing Music Assistant group whose queue this room plays from, -1 when none.
   int owner_of(int slot) const {
     const Room &r = rooms_[slot];
@@ -691,6 +812,7 @@ class Players : public tessera::InPsram {
     }
     room.volume = a["volume_level"].is<float>() ? static_cast<int>(a["volume_level"].as<float>() * 100.0f + 0.5f) : -1;
     room.group = !strcmp(a["mass_player_type"] | "", "group");
+    put(room.stream, a["active_queue"] | "");
     // MediaPlayerEntityFeature.GROUPING: Music Assistant can join it to another player (a Cast, a Sonos), where a
     // player it reaches through another integration (a screen's own speaker) plays alone.
     // Only Cast speakers play in step with each other here: an AirPlay player (its entity named so, or a queue "ap...")
@@ -857,8 +979,13 @@ class MusicCard : public tessera::Card {
     const int all_w = ui::text_width(tessera::fill(plugin_->text("volume_all"), "n", "100").c_str(), Font::BODY_LARGE) + ui::px(8);
     const int name_w = ui::text_width("Google Home 100 %", Font::BODY_LARGE) + ui::px(8);
     const int spare = width_ - 7 * std::max(ui::mm(7), std::min(key_, ui::mm(9))) - 8 * gap_;
-    const int volume_w = std::max(all_w, std::min({name_w, spare, width_ / 3}));
+    int volume_w = std::max(all_w, std::min({name_w, spare, width_ / 3}));
     round_ = std::max(ui::mm(7), std::min(key_, (width_ - volume_w - 8 * gap_) / 7));
+    // A narrow card: the volume gives way first, down to "100 %", then the keys, so none sits over another.
+    if (7 * round_ + volume_w + 8 * gap_ > width_) {
+      volume_w = std::max(ui::text_width("100 %", Font::BODY_LARGE) + ui::px(4), width_ - 7 * round_ - 8 * gap_);
+      round_ = std::min(round_, (width_ - volume_w - 8 * gap_) / 7);
+    }
 
     // The head: on Now playing the rooms key and the library key; in the lists the rooms it plays in.
     head_ = button(0, 0, width_, key_, theme::RAISED);
@@ -970,7 +1097,12 @@ class MusicCard : public tessera::Card {
     const int row_gap = ui::px(6);
     row_h_ = std::min(key_, std::max(ui::mm(8), ui::line_height(Font::BODY_LARGE) + ui::px(16)));
     rows_ = std::max(1, std::min(ROWS, (height_ - key_ - row_h_ - 2 * gap_ + row_gap) / (row_h_ + row_gap)));
-    for (int i = 0; i < rows_; ++i) {
+    // Rooms: lower rows (a name over what plays), and its page keys beside the head, so more rooms fit a page.
+    row_gap_ = row_gap;
+    room_h_ = std::min(row_h_, std::max(ui::mm(7), ui::line_height(Font::BODY_LARGE) + ui::line_height(Font::BODY) + ui::px(6)));
+    room_rows_ = std::max(1, std::min(ROWS, (height_ - key_ - gap_ + row_gap) / (room_h_ + row_gap)));
+    made_ = std::max(rows_, room_rows_);
+    for (int i = 0; i < made_; ++i) {
       Row &r = row_[i];
       r.y = key_ + gap_ + i * (row_h_ + row_gap);
       r.box = button(0, r.y, width_, row_h_, theme::CARD);
@@ -978,6 +1110,16 @@ class MusicCard : public tessera::Card {
       r.text = ui::label(r.box, Font::BODY_LARGE, theme::INK);
       r.side = ui::label(r.box, Font::BODY, theme::MUTED);
       r.mark = glyph(r.box, ICON_CHECK, theme::ACCENT);
+      r.key = button(0, 0, 1, 1, theme::RAISED);
+      lv_obj_set_parent(r.key, r.box);
+      r.key_icon = glyph(r.key, ICON_PLUS, theme::INK);
+      r.key_text = ui::label(r.key, Font::BODY, theme::INK);
+      r.go = button(0, 0, 1, 1, theme::RAISED);
+      lv_obj_set_parent(r.go, r.box);
+      r.go_icon = glyph(r.go, ICON_MOVE, theme::INK);
+      r.go_text = ui::label(r.go, Font::BODY, theme::INK);
+      hide(r.key, true);
+      hide(r.go, true);
     }
     const int pager_y = height_ - row_h_;
     prev_ = button(0, pager_y, key_ * 2, row_h_, theme::RAISED);
@@ -1137,7 +1279,7 @@ class MusicCard : public tessera::Card {
     for (lv_obj_t *k : {room_down_, room_up_}) if (k) restyle(k, theme::RAISED);
     restyle(bar_, theme::TRACK);
     restyle(bar_fill_, theme::ACCENT);
-    for (int i = 0; i < rows_; ++i) restyle(row_[i].box, theme::CARD);
+    for (int i = 0; i < made_; ++i) restyle(row_[i].box, theme::CARD);
     for (int i = 0; i < KIND_KEYS; ++i) {
       restyle(kind_key_[i].box, theme::RAISED);
       ui::set_color(kind_key_[i].icon, theme::ACCENT);
@@ -1162,7 +1304,7 @@ class MusicCard : public tessera::Card {
     for (lv_obj_t *l : {room_down_icon_, room_up_icon_, room_volume_}) if (l) ui::set_color(l, theme::INK);
     if (prev_icon_) ui::set_color(prev_icon_, theme::INK);
     if (next_icon_) ui::set_color(next_icon_, theme::INK);
-    for (int i = 0; i < rows_; ++i) {
+    for (int i = 0; i < made_; ++i) {
       ui::set_color(row_[i].text, theme::INK);
       ui::set_color(row_[i].side, theme::MUTED);
       ui::set_color(row_[i].mark, theme::ACCENT);
@@ -1262,7 +1404,7 @@ class MusicCard : public tessera::Card {
 #endif
     if (inside(prev_, p) && !lv_obj_has_flag(prev_, LV_OBJ_FLAG_HIDDEN)) { turn(-1); return; }
     if (inside(next_, p) && !lv_obj_has_flag(next_, LV_OBJ_FLAG_HIDDEN)) { turn(1); return; }
-    for (int i = 0; i < rows_; ++i) {
+    for (int i = 0; i < made_; ++i) {
       if (lv_obj_has_flag(row_[i].box, LV_OBJ_FLAG_HIDDEN) || !inside(row_[i].box, p)) continue;
       tap_row(*tile, i);
       return;
@@ -1306,7 +1448,12 @@ class MusicCard : public tessera::Card {
   static constexpr int KEYS = 10 + 26 + 2;
   struct TypeKey { lv_obj_t *box = nullptr, *text = nullptr; char ch = 0; };
   static constexpr int ROWS = 6;
-  struct Row { lv_obj_t *box = nullptr, *icon = nullptr, *text = nullptr, *side = nullptr, *mark = nullptr; int y = 0; };
+  // A row of Rooms also has two keys: Add, Remove or Can't add (Here on the room the card holds), and Move here.
+  struct Row {
+    lv_obj_t *box = nullptr, *icon = nullptr, *text = nullptr, *side = nullptr, *mark = nullptr;
+    lv_obj_t *key = nullptr, *key_icon = nullptr, *key_text = nullptr, *go = nullptr, *go_icon = nullptr, *go_text = nullptr;
+    int y = 0;
+  };
   struct Item { char name[49] = "", uri[49] = "", type[16] = "", side[49] = ""; bool playable = false; };
   // What the Open key opens: an artist (its albums) or an album (its songs).
   enum Opened : uint8_t { CLOSED = 0, ARTIST = 1, ALBUM = 2 };
@@ -1354,6 +1501,11 @@ class MusicCard : public tessera::Card {
            bool more = false, bool home = false) {
     Row &r = row_[i];
     hide(r.box, false);
+    lv_obj_set_pos(r.box, 0, r.y);
+    lv_obj_set_size(r.box, width_, row_h_);
+    hide(r.key, true);
+    hide(r.go, true);
+    outline(r, -1);
     const int pad = gap_ + ui::px(4), icon_w = lv_obj_get_width(r.icon), mark_w = lv_obj_get_width(r.mark);
     set_icon(r.icon, icon);
     ui::set_color(r.icon, home ? theme::MARK_GREEN : ticked ? theme::ACCENT : theme::MUTED);
@@ -1416,7 +1568,9 @@ class MusicCard : public tessera::Card {
     const int head_w = std::max<int>(1, now ? width_ - static_cast<int>(lv_obj_get_width(library_)) -
                                                   static_cast<int>(lv_obj_get_width(everywhere_key_)) - 2 * gap_
                                        : row ? width_ - play_w_ - find_w_ - open_w_ - 3 * gap_
-                                       : taking ? width_ - take_w_ - gap_ - (move_ ? move_w_ + gap_ : 0) : width_);
+                                       : taking ? width_ - take_w_ - gap_ - (move_ ? move_w_ + gap_ : 0)
+                                       : view_ == View::ROOMS && room_pages(tile) > 1 ? width_ - 2 * key_ - 2 * gap_
+                                                                                       : width_);
     lv_obj_set_width(head_, head_w);
     set_icon(head_icon_, tile.room_count() > 1 ? ICON_ROOMS : ICON_SPEAKER);
     lv_obj_set_pos(head_icon_, pad, (key_ - ui::line_height(Font::ICON_SMALL)) / 2);
@@ -1454,6 +1608,11 @@ class MusicCard : public tessera::Card {
     for (int i = 0; i < KEYS_NOW; ++i) hide(keys_[i], !now || !tile);
     const bool list = !now;
     if (!list) for (int i = 0; i < rows_; ++i) hide(row_[i].box, true);
+    // The extra rows of Rooms, and the page keys back under the list, on every other page.
+    if (view_ != View::ROOMS) {
+      for (int i = rows_; i < made_; ++i) hide(row_[i].box, true);
+      pager_below();
+    }
     hide(prev_, true);
     hide(next_, true);
     hide(page_, true);
@@ -1662,45 +1821,138 @@ class MusicCard : public tessera::Card {
     return plugin_->text("idle");
   }
 
+  // A row's outline: the colour of the stream it plays (green: the stream the card holds), none while it plays nothing.
+  void outline(Row &r, int role) {
+    const int w = role < 0 ? 0 : ui::px(3);
+    if (lv_obj_get_style_border_width(r.box, LV_PART_MAIN) != w) lv_obj_set_style_border_width(r.box, w, 0);
+    if (role >= 0) lv_obj_set_style_border_color(r.box, ui::color(static_cast<theme::Role>(role)), 0);
+  }
+  // The colour of a stream other than the one the card holds, the same on every screen for the same stream.
+  static theme::Role stream_role(const char *stream) {
+    static const theme::Role PALETTE[] = {theme::ENERGY_SOLAR, theme::ENERGY_BATTERY_IN, theme::ENERGY_BATTERY_OUT,
+                                          theme::MARK_AMBER, theme::ENERGY_RETURN, theme::ENERGY_DEVICE_1};
+    uint32_t h = 0;
+    for (const char *c = stream; *c; ++c) h = (h * 31u + static_cast<uint8_t>(*c)) % 16777216u;
+    return PALETTE[h % (sizeof(PALETTE) / sizeof(PALETTE[0]))];
+  }
+  // A key in a row: its icon alone on a narrow card, else its icon and its word.
+  void row_key(lv_obj_t *key, lv_obj_t *icon, lv_obj_t *text, uint32_t glyph_code, const char *word, theme::Role fill,
+               theme::Role ink, int x, int w, int row_h) {
+    hide(key, false);
+    restyle(key, fill);
+    lv_obj_set_size(key, std::max(1, w), row_h - 2 * ui::px(6));
+    lv_obj_set_pos(key, x, ui::px(6));
+    set_icon(icon, glyph_code);
+    ui::set_color(icon, ink);
+    ui::set_color(text, ink);
+    const int kh = row_h - 2 * ui::px(6);
+    if (compact_) {
+      hide(text, true);
+      lv_obj_set_pos(icon, (w - lv_obj_get_width(icon)) / 2, (kh - ui::line_height(Font::ICON_SMALL)) / 2);
+      return;
+    }
+    hide(text, false);
+    ui::set_text(text, word);
+    const int iw = lv_obj_get_width(icon), tw = ui::text_width(word, Font::BODY);
+    const int x0 = std::max(0, (w - iw - tw) / 2);
+    lv_obj_set_pos(icon, x0, (kh - ui::line_height(Font::ICON_SMALL)) / 2);
+    lv_obj_set_size(text, std::max(1, tw + 2), ui::line_height(Font::BODY));
+    lv_obj_set_pos(text, x0 + iw, (kh - ui::line_height(Font::BODY)) / 2);
+  }
+  // The widths of the two keys: as wide as the longest word, or an icon's width on a narrow card.
+  void size_keys() {
+    const int pad = ui::px(12) + ui::line_height(Font::ICON_SMALL) + ui::px(4);
+    int key_w = 0;
+    for (const char *k : {"add", "remove", "cannot_add", "here"})
+      key_w = std::max(key_w, ui::text_width(plugin_->text(k), Font::BODY));
+    key_w_ = key_w + pad;
+    go_w_ = ui::text_width(plugin_->text("move_here"), Font::BODY) + pad;
+    // The name keeps at least two fifths of the row; else the keys show their icons only.
+    compact_ = key_w_ + go_w_ + 3 * gap_ > width_ / 2;
+    if (compact_) key_w_ = go_w_ = std::max(ui::mm(10), room_h_);
+  }
+
+  // Rooms, as the tablet's: each room in its kind's colour, what it plays (another stream says so), an outline in its
+  // stream's colour, and its keys: Here, Add, Remove or Can't add, and Move here.
   void paint_rooms(Players &tile) {
-    // Every room, ticked when it plays the next item.
+    if (!key_w_) size_keys();
     entries_ = 0;
     int listed[SLOTS];
     for (int i = 0; i < SLOTS; ++i) if (tile.room(i).used()) listed[entries_++] = i;
-    const int first = page_no_ * rows_;
-    const uint16_t picked = tile.chosen();
-    for (int i = 0; i < rows_; ++i) {
+    const int first = page_no_ * room_rows_;
+    const int lead = tile.lead_slot();
+    const bool lead_on = Players::on(tile.room(lead));
+    const int row_h = room_h_;
+    for (int i = 0; i < made_; ++i) {
+      if (i >= room_rows_) { hide(row_[i].box, true); continue; }
       const int at = first + i;
       if (at >= entries_) { hide(row_[i].box, true); continue; }
-      row_entry_[i] = listed[at];
-      const Room &r = tile.room(listed[at]);
-      if (tile.group_playing() && listed[at] == tile.lead_slot()) {
-        // Whole House itself: ticked; unticked, it asks for the one room to go on in.
-        row(i, ICON_SPEAKER, r.name, narrow_ ? plugin_->text("pick_one") : "", !narrow_, false, false, !narrow_);
-        continue;
+      const int slot = listed[at];
+      row_entry_[i] = slot;
+      Row &r = row_[i];
+      lv_obj_set_pos(r.box, 0, key_ + gap_ + i * (row_h + row_gap_));
+      lv_obj_set_size(r.box, width_, row_h);
+      const Room &room = tile.room(slot);
+      hide(r.box, false);
+      hide(r.mark, true);
+      const Players::Kind kind = tile.kind_of_room(slot);
+      const theme::Role tint = kind == Players::Kind::GROUP    ? theme::MARK_PURPLE
+                               : kind == Players::Kind::GOOGLE ? theme::MARK_BLUE
+                                                               : theme::ENERGY_SOLAR;
+      const char *stream = tile.stream_of(slot);
+      const bool mine = lead_on && tile.same_stream(slot, lead);
+      outline(r, !stream[0] ? -1 : mine ? static_cast<int>(theme::MARK_GREEN) : static_cast<int>(stream_role(stream)));
+      const int pad = gap_ + ui::px(4), icon_w = lv_obj_get_width(r.icon);
+      set_icon(r.icon, kind == Players::Kind::GROUP ? ICON_ROOMS : ICON_SPEAKER);
+      ui::set_color(r.icon, tint);
+      lv_obj_set_pos(r.icon, pad, (row_h - ui::line_height(Font::ICON_SMALL)) / 2);
+      // The keys at the right: Move here last, the room's key before it.
+      int right = width_ - pad;
+      if (tile.can_move(slot)) {
+        right -= go_w_;
+        row_key(r.go, r.go_icon, r.go_text, ICON_MOVE, plugin_->text("move_here"), theme::TRACK, theme::INK, right, go_w_, row_h);
+        right -= gap_;
+      } else {
+        hide(r.go, true);
       }
-      if (tile.group_playing() && narrow_ && !r.group) {
-        row(i, ICON_SPEAKER, r.name, gone(r.state) ? plugin_->text("unavailable") : plugin_->text("moves_here"), false,
-            gone(r.state));
-        continue;
+      const Players::Key key = gone(room.state) ? Players::Key::NONE : tile.key_of(slot);
+      if (key != Players::Key::NONE) {
+        right -= key_w_;
+        const bool here = key == Players::Key::HERE;
+        const uint32_t code = here ? ICON_CHECK : key == Players::Key::ADD ? ICON_ADD
+                              : key == Players::Key::REMOVE ? ICON_REMOVE : ICON_CANNOT;
+        const char *word = plugin_->text(here ? "here" : key == Players::Key::ADD ? "add"
+                                         : key == Players::Key::REMOVE ? "remove" : "cannot_add");
+        row_key(r.key, r.key_icon, r.key_text, code, word,
+                here ? theme::MARK_GREEN : key == Players::Key::ADD ? theme::ACCENT : theme::TRACK,
+                here || key == Players::Key::ADD ? theme::ON_ACCENT : key == Players::Key::CANNOT ? theme::SUBTLE : theme::INK,
+                right, key_w_, row_h);
+        right -= gap_;
+      } else {
+        hide(r.key, true);
       }
-      if (tile.group_playing() && listed[at] != tile.lead_slot() && !r.group) {
-        // Whole House plays: its speakers that play are ticked, and a tap takes one out; any other room takes the music
-        // alone, as it says.
-        const bool in = tile.in_group_now(listed[at]);
-        row(i, ICON_SPEAKER, r.name,
-            gone(r.state) ? plugin_->text("unavailable") : !in ? plugin_->text("moves_here") : "", in, gone(r.state), false,
-            in);
-        continue;
+      // The name over what it plays: in its stream, the song; in another, "Other stream · " first.
+      const int text_x = pad + icon_w + gap_;
+      const int text_w = std::max(1, right - text_x);
+      std::string what;
+      if (gone(room.state)) what = plugin_->text("unavailable");
+      else if (stream[0]) {
+        const std::string song = playing_words(room.title[0] ? room : tile.room(lead));
+        what = mine || !lead_on ? song : tessera::fill(plugin_->text("other_stream"), "what", song);
       }
-      const Players::Add add = tile.can_add(listed[at]);
-      const bool cannot = add == Players::Add::NO;
-      row(i, ICON_SPEAKER, r.name,
-          gone(r.state)                 ? plugin_->text("unavailable")
-          : cannot                      ? plugin_->text("cannot_join")
-          : add == Players::Add::MOVE   ? plugin_->text("moves_here")
-                                        : "",
-          (picked >> listed[at]) & 1, gone(r.state) || cannot);
+      const int name_h = ui::line_height(Font::BODY_LARGE), side_h = ui::line_height(Font::BODY);
+      const bool two = !what.empty() && row_h >= name_h + side_h;
+      lv_obj_set_size(r.text, text_w, name_h);
+      lv_obj_set_pos(r.text, text_x, two ? (row_h - name_h - side_h) / 2 : (row_h - name_h) / 2);
+      ui::set_text(r.text, two || what.empty() ? std::string(room.name) : std::string(room.name) + " · " + what);
+      ui::set_color(r.text, gone(room.state) ? theme::SUBTLE : theme::INK);
+      hide(r.side, !two);
+      if (two) {
+        lv_obj_set_size(r.side, text_w, side_h);
+        lv_obj_set_pos(r.side, text_x, (row_h - name_h - side_h) / 2 + name_h);
+        ui::set_text(r.side, what);
+        ui::set_color(r.side, mine ? theme::MARK_GREEN : theme::MUTED);
+      }
     }
     pager(entries_);
   }
@@ -1817,9 +2069,41 @@ class MusicCard : public tessera::Card {
   }
 
   // A pager over a list the card has whole.
+  // The page keys: under the list, or on Rooms beside the head.
+  void pager_below() {
+    const int pager_y = height_ - row_h_;
+    lv_obj_set_pos(prev_, 0, pager_y);
+    lv_obj_set_size(prev_, key_ * 2, row_h_);
+    lv_obj_set_pos(next_, width_ - key_ * 2, pager_y);
+    lv_obj_set_size(next_, key_ * 2, row_h_);
+    lv_obj_align(prev_icon_, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_align(next_icon_, LV_ALIGN_CENTER, 0, 0);
+  }
+  void pager_beside_head() {
+    lv_obj_set_pos(prev_, width_ - 2 * key_ - gap_, 0);
+    lv_obj_set_size(prev_, key_, key_);
+    lv_obj_set_pos(next_, width_ - key_, 0);
+    lv_obj_set_size(next_, key_, key_);
+    lv_obj_align(prev_icon_, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_align(next_icon_, LV_ALIGN_CENTER, 0, 0);
+  }
+  int room_pages(const Players &tile) const { return std::max(1, (tile.room_count() + room_rows_ - 1) / room_rows_); }
   void pager(int entries, int page = -1) {
     if (page < 0) page = page_no_;
-    const int pages = std::max(1, (entries + rows_ - 1) / rows_);
+    const int per = view_ == View::ROOMS ? room_rows_ : rows_;
+    const int pages = std::max(1, (entries + per - 1) / per);
+    if (view_ == View::ROOMS) {
+      // Both keys stay while there are pages, the one that cannot turn faded, so the head keeps its width.
+      pager_beside_head();
+      hide(prev_, pages < 2);
+      hide(next_, pages < 2);
+      ui::set_color(prev_icon_, page == 0 ? theme::SUBTLE : theme::INK);
+      ui::set_color(next_icon_, page >= pages - 1 ? theme::SUBTLE : theme::INK);
+      hide(page_, true);
+      return;
+    }
+    ui::set_color(prev_icon_, theme::INK);
+    ui::set_color(next_icon_, theme::INK);
     hide(prev_, page == 0);
     hide(next_, page >= pages - 1);
     hide(page_, pages < 2);
@@ -1834,6 +2118,10 @@ class MusicCard : public tessera::Card {
       ask();
     } else if (view_ == View::KINDS) {
       kind_page_ = std::max(0, kind_page_ + step);
+    } else if (view_ == View::ROOMS) {
+      Players *tile = plugin_->players_at(tile_);
+      const int pages = tile ? room_pages(*tile) : 1;
+      page_no_ = std::max(0, std::min(pages - 1, page_no_ + step));
     } else {
       page_no_ = std::max(0, page_no_ + step);
     }
@@ -1852,93 +2140,38 @@ class MusicCard : public tessera::Card {
     if (view_ == View::ROOMS) {
       const int slot = row_entry_[i];
       if (slot < 0 || gone(tile.room(slot).state)) return;
-      if (tile.group_playing() && slot == tile.lead_slot()) {
-        // Whole House unticked: the music goes on in its speakers, as a group of their own. Ticked again later, it takes
-        // the music back with all its rooms.
-        tile.ungroup();
-        paint();
-        return;
-      }
-      if (tile.group_playing() && narrow_ && !tile.room(slot).group) {
-        narrow_ = false;
+      const Row &r = row_[i];
+      const tessera::Point p = tessera::tap_point();
+      tessera::Point in;
+      in.x = p.x - static_cast<int>(lv_obj_get_x(r.box));
+      in.y = p.y - static_cast<int>(lv_obj_get_y(r.box));
+      if (inside(r.go, in)) {
+        // Move here: the music goes to this room alone, and the card holds it.
         if (!tile.move_to(slot)) return;
-        plugin_->explain(tile.room(slot).name, tile.room(tile.lead_slot()).name, true);
         tile.focus(slot);
         page_no_ = 0;
         show(View::NOW);
         return;
       }
-      if (tile.group_playing() && slot != tile.lead_slot() && !tile.room(slot).group) {
-        if (!tile.room(slot).sync) {
-          // It cannot join Whole House: the music moves there alone.
-          if (!tile.move_to(slot)) return;
-          plugin_->explain(tile.room(slot).name, tile.room(tile.lead_slot()).name, true);
-          tile.focus(slot);
+      if (inside(r.key, in)) {
+        if (tile.key_of(slot) == Players::Key::CANNOT) {
+          plugin_->explain(tile.room(slot).name, tile.room(tile.lead_slot()).name, false);
+          return;
+        }
+        if (tile.press_key(slot)) {
           page_no_ = 0;
           show(View::NOW);
           return;
         }
-        // A speaker of Whole House unticked: Whole House is no longer whole, so it unticks too and the other speakers go
-        // on as a group of their own. Any other room takes the music alone.
-        if (tile.in_group_now(slot)) {
-          tile.ungroup(1u << slot);
-          paint();
-          return;
-        }
-        if (!tile.move_to(slot)) return;
-        tile.focus(slot);
-        page_no_ = 0;
-        show(View::NOW);
-        return;
-      }
-      const Players::Add add = tile.can_add(slot);
-      if (add == Players::Add::NO) {
-        plugin_->explain(tile.room(slot).name, tile.room(tile.lead_slot()).name, false);
-        return;
-      }
-      if (add == Players::Add::SWITCH) {
-        // A Music Assistant group (Whole House) stands alone: it already holds its speakers, and the next item goes to
-        // it only. A room while nothing plays in one that cannot be grouped: this room instead.
-        // While something plays elsewhere, a Music Assistant group tapped takes it over (the join script's move, which
-        // puts back the group's rooms and presses play): picking it alone would only choose it for the next item.
-        const int from = tile.lead_slot();
-        if (tile.room(slot).group && from != slot && Players::on(tile.room(from)) && plugin_->join_script()[0]) {
-          // No popup: Whole House takes the music over with all its rooms; "can't play in step" is for a screen's
-          // own speaker.
-          if (!tile.move_to(slot)) return;
-          tile.focus(slot);
-          page_no_ = 0;
-          show(View::NOW);
-          return;
-        }
-        if (tile.room(slot).group) tile.choose(1u << slot);
-        else tile.choose((tile.chosen() & ~tile.group_mask()) | (1u << slot));
-        tile.focus(slot);
         paint();
         return;
       }
-      if (add == Players::Add::MOVE) {
-        // What plays moves here (the join script's music_assistant.transfer_queue); this room is then the one in charge.
-        // Sent as a move, whatever was ticked before: a room still ticked from earlier would otherwise send nothing.
-        if (!tile.move_to(slot)) return;
-        plugin_->explain(tile.room(slot).name, tile.room(tile.lead_slot()).name, true);
+      // The room itself: the card holds what plays there (another stream, or the room alone).
+      if (Players::on(tile.room(slot)) && slot != tile.lead_slot()) {
         tile.focus(slot);
         page_no_ = 0;
         show(View::NOW);
-        return;
       }
-      if (!tile.several()) {
-        // One room at a time: this one, and back to Now playing.
-        tile.choose(1u << slot);
-        page_no_ = 0;
-        show(View::NOW);
-        return;
-      }
-      // Several: this one in or out, never the last one out; a speaker ticked takes a Music Assistant group out.
-      uint16_t picked = tile.chosen() ^ (1u << slot);
-      if (!tile.room(slot).group && (picked & (1u << slot))) picked &= ~tile.group_mask();
-      if (picked) tile.choose(picked);
-      paint();
       return;
     }
     if (view_ == View::KINDS) {
@@ -2293,6 +2526,9 @@ class MusicCard : public tessera::Card {
   int volume_mid_ = 0;  // the middle of the row of keys, where the volume label stands
   // Whole House unticked while it plays: the next room tapped takes the music alone (a move).
   bool narrow_ = false;
+  // The keys of Rooms: their widths, and whether they show their icons only (a narrow card).
+  int key_w_ = 0, go_w_ = 0, room_h_ = 0, room_rows_ = 1, made_ = 0, row_gap_ = 0;
+  bool compact_ = false;
   int page_no_ = 0, kind_page_ = 0, entries_ = 0;
   bool favourites_ = false;
   int kind_ = 0, offset_ = 0, count_ = 0;

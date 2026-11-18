@@ -53,7 +53,12 @@
     "where_none": "Nothing plays now.",
     "moved_title": "Moved to {room}",
     "moved_body": "{room} can't play in step with {lead} (a screen's own speaker plays on its own), so the music moved to {room} instead. Tap {lead} to move it back.",
-    "move_here": "Move here"
+    "move_here": "Move here",
+    "here": "Here",
+    "add": "Add",
+    "remove": "Remove",
+    "cannot_add": "Can't add",
+    "other_stream": "Other stream · {what}"
   },
   "app": {
     "name": "Music rooms",

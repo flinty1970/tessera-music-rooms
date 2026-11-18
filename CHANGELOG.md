@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.14.0
+
+- Rooms works like the music dashboard: every room has its own keys. **Add** puts a speaker in with what plays,
+  **Remove** takes it out, and **Move here** moves the music to that room alone. The room the card controls says
+  **Here**.
+- A Google speaker group that holds the speaker playing says Add: the music spreads to the whole group, in step. A
+  group that would take another stream says **Can't add**. A screen's own speaker has Move here only.
+- Adding or removing a speaker of a playing Google group moves the music to the group that matches exactly (Main
+  House + the bedroom display is Main House + Bedroom, and back); the card follows it.
+- Colours by kind: Google speaker groups purple, Google speakers blue, screens orange.
+- Each stream has a coloured outline; the one the card controls is green. A room playing something else says
+  "Other stream ·" before its song, and a tap on it controls that stream.
+- On a narrow card (the 4-inch screens) the keys show icons only.
+- The rooms now read `active_queue` and `group_members`: open the tile in the Tessera app and save it once, if its
+  rooms show no outlines.
+- Rooms shows more rooms on a page: lower rows, and the page keys sit beside the head.
+- On a narrow card the repeat key no longer hides under the volume key.
+
 ## 0.13.10
 
 - Whole House means all its rooms: unticking one of its speakers unticks Whole House too, and the other speakers go on
