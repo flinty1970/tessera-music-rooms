@@ -47,7 +47,7 @@
     "volume_all": "All {n} %",
     "cannot_join": "Can't join",
     "cannot_join_title": "{room} can't join",
-    "cannot_join_body": "{room} can't play together with {lead}: Music Assistant says it can't be grouped with it right now. A Google group made in the Google Home app (such as Main House) always plays in step. Move here plays the music in {room} instead.",
+    "cannot_join_body": "{room} can't join {lead} here. Google speakers play in step only as a group made in the Google Home app, and no group has exactly these speakers. Make one there (it then shows here), or press Move here to play in {room} instead.",
     "moves_here": "Moves here",
     "pick_one": "Tap the one room to play in",
     "where_none": "Nothing plays now.",

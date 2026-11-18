@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.6
+
+- Add and Remove follow your Google speaker groups, as the music dashboard does: a speaker comes in or goes out only
+  where what then plays is a group made in the Google Home app (or one speaker alone), and the music switches to that
+  group. Elsewhere the row offers Move here, and Can't add tells why. Joining Google speakers on the fly through Music
+  Assistant did not stay in step.
+
 ## 0.14.5
 
 - Add on a Google speaker shows again wherever Music Assistant can join it to the speaker that plays (both say they

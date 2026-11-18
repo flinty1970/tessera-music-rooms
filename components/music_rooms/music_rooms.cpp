@@ -250,6 +250,19 @@ class Players : public tessera::InPsram {
     if (!strncmp(r.stream, "media_player.", 13)) return Kind::SCREEN;
     return r.sync || r.stream[0] ? Kind::GOOGLE : Kind::SCREEN;
   }
+  // Whether taking this speaker out of the playing group leaves a Google group exactly, or one speaker alone.
+  bool leaves_group(int slot) const {
+    const int lead = lead_slot();
+    const Room &l = rooms_[lead];
+    if (!l.group || !l.members) return false;
+    const uint16_t rest = l.members & static_cast<uint16_t>(~(1u << slot));
+    if (__builtin_popcount(rest) == 1) return true;
+    for (int j = 0; j < SLOTS; ++j) {
+      const Room &g = rooms_[j];
+      if (j != lead && g.used() && g.group && !gone(g.state) && g.members == rest) return true;
+    }
+    return false;
+  }
   // Whether adding this speaker to what plays makes up a Google group exactly (Main House + the Bedroom display is Main
   // House + Bedroom): Google speakers play in step only as a group made in the Google Home app, never joined on the fly.
   bool completes_group(int slot) const {
@@ -284,12 +297,11 @@ class Players : public tessera::InPsram {
       return has ? Key::ADD : Key::CANNOT;
     }
     if (kind == Kind::SCREEN) return Key::NONE;
-    if (same_stream(slot, lead)) return Key::REMOVE;
-    // A Google speaker comes in where it makes up a Google group with what plays, or where Music Assistant can join it
-    // to the speaker that plays (both say they can group); else it can be moved there only.
+    // Google speakers play in step only as a group made in the Google Home app: a speaker comes in or goes out only
+    // where what then plays is such a group (or one speaker alone); elsewhere it can be moved there only.
+    if (same_stream(slot, lead)) return leaves_group(slot) ? Key::REMOVE : Key::NONE;
     if (kind_of_room(lead) == Kind::SCREEN) return Key::CANNOT;
-    if (completes_group(slot)) return Key::ADD;
-    return !l.group && joinable(lead) && joinable(slot) ? Key::ADD : Key::CANNOT;
+    return completes_group(slot) ? Key::ADD : Key::CANNOT;
   }
   // Move here: every other room, while the room in charge plays.
   bool can_move(int slot) const {
