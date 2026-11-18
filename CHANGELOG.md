@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.1
+
+- Add and Remove appear only where they work: where what then plays is a Google speaker group made in the Google Home
+  app (or one speaker). A speaker that would need a group that does not exist shows Can't add; one that cannot leave
+  without breaking the group shows no key, and Move here still takes the music there. The Group it follows sensor
+  now also names those speakers (see the README).
+
 ## 0.15.0
 
 - A room that plays shows a music note instead of its speaker, green where it plays what the card holds, so you see

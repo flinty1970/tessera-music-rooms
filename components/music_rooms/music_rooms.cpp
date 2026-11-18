@@ -174,18 +174,27 @@ class Players : public tessera::InPsram {
     }
     follow(data["entities"]["follow"]["state"] | "");
   }
-  // The `follow` sensor's state: "<group entity>|<its queue>|<its state>|<its name>" while a Google group the tile does
-  // not list plays, anything else while none does. Its speakers are those of the tile that play from its queue.
+  // The `follow` sensor's state: "<player>|<its queue>|<its state>|<its name>|<can add>|<can remove>" while a Google
+  // group or speaker plays, "none" while none does. A group the tile does not list is followed in FOLLOW: its speakers
+  // are those of the tile that play from its queue. The last two parts name the speakers that can come in or go out
+  // so that what plays is still a Google group (or one speaker), each by the first six letters of its object id.
   void follow(const char *text) {
     Room &g = rooms_[FOLLOW];
-    char part[4][64] = {};
+    char part[6][64] = {};
     int n = 0, at = 0;
-    for (const char *c = text; *c && n < 4; ++c) {
+    for (const char *c = text; *c && n < 6; ++c) {
       if (*c == '|') { part[n++][at] = '\0'; at = 0; continue; }
       if (at < 63) part[n][at++] = *c;
     }
-    if (n < 4) part[n][at] = '\0';
-    if (n < 3 || strncmp(part[0], "media_player.", 13) || !part[1][0]) {
+    if (n < 6) part[n][at] = '\0';
+    const bool valid = n >= 3 && !strncmp(part[0], "media_player.", 13) && part[1][0];
+    keys_known_ = valid && n >= 5;
+    put(keys_queue_, valid ? part[1] : "");
+    put(can_add_, keys_known_ ? part[4] : "");
+    put(can_remove_, keys_known_ && n >= 5 ? part[5] : "");
+    bool listed = false;
+    for (int i = 0; i < FOLLOW && valid; ++i) listed = listed || !strcmp(rooms_[i].id, part[0]);
+    if (!valid || listed) {
       if (g.used()) { g = Room(); g.hidden = true; }
       return;
     }
@@ -315,9 +324,26 @@ class Players : public tessera::InPsram {
     // As the tablet: a Google speaker that plays along comes out (Remove); one that can be grouped comes in (Add) while
     // a Google speaker or group plays. Home Assistant's join script makes it the Google group that matches, where one
     // does. A screen's own speaker never groups: Move here only.
-    if (same_stream(slot, lead)) return Key::REMOVE;
+    // Home Assistant's `follow` sensor names, for what plays, the speakers whose coming in or going out leaves a Google
+    // group (or one speaker): only those get Add or Remove, so no key does nothing.
+    const bool told = keys_known_ && keys_queue_[0] && !strcmp(keys_queue_, stream_of(lead));
+    if (same_stream(slot, lead)) return !told || named(can_remove_, r.id) ? Key::REMOVE : Key::NONE;
     if (kind_of_room(lead) == Kind::SCREEN) return Key::CANNOT;
+    if (told) return named(can_add_, r.id) ? Key::ADD : Key::CANNOT;
     return r.sync && (l.group || l.sync) ? Key::ADD : Key::CANNOT;
+  }
+  // Whether a list of the `follow` sensor ("living,stereo") names this player: a name is the start of its object id.
+  static bool named(const char *list, const char *id) {
+    const char *dot = strchr(id, '.');
+    const char *object = dot ? dot + 1 : id;
+    for (const char *c = list; *c;) {
+      const char *end = strchr(c, ',');
+      const size_t len = end ? static_cast<size_t>(end - c) : strlen(c);
+      if (len && !strncmp(object, c, len)) return true;
+      if (!end) break;
+      c = end + 1;
+    }
+    return false;
   }
   // Move here: every other room, while the room in charge plays.
   bool can_move(int slot) const {
@@ -899,6 +925,9 @@ class Players : public tessera::InPsram {
   char open_on_[16] = "kinds";
   char started_title_[49] = "", started_state_[16] = "";
   bool several_ = false;
+  // What the `follow` sensor said of the speakers' keys (see follow()).
+  bool keys_known_ = false;
+  char keys_queue_[49] = "", can_add_[64] = "", can_remove_[64] = "";
   int volume_slot_ = -1;
   uint32_t started_at_ = 0;
   Note note_ = Note::NONE;

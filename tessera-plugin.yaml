@@ -3,7 +3,7 @@
 # its keys. Every name, label and hint below is a key into translations/<language>.json, part "app". docs/MANIFEST.md
 # in the plugins repository has every field.
 id: music_rooms
-version: "0.15.0"
+version: "0.15.1"
 # 0.15: options of kind entity (the rooms); 0.17: the cover of the tile's own player by name (cover:).
 api: "0.18"
 icon: speaker-multiple
@@ -78,8 +78,8 @@ tiles:
       - { id: room_8, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_8 }
       - { id: room_9, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_9 }
       - { id: room_10, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_10 }
-      # A sensor that names the Google group playing that the rooms do not list ("<entity>|<queue>|<state>|<name>"), so
-      # its speakers show that they play and the keys act on it. See the README.
+      # A sensor that names what plays and the speakers that can come in or go out ("<entity>|<queue>|<state>|<name>|<add>|
+      # <remove>"), so a group the rooms do not list shows and Add and Remove appear only where they work. See the README.
       - { id: follow, kind: entity, domains: [sensor], label: follow, hint: follow_hint }
       # The source the Library key opens: the list of kinds, the favourites, or one kind (Radio, Playlists, ...).
       - { id: open_on, kind: choice, label: open_on, hint: open_on_hint, default: kinds,

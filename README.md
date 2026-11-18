@@ -106,22 +106,37 @@ volume, the groups in colour, and the library and search. See `dashboard/README.
 
 ## The group it follows
 
-A Google speaker group that is not one of a tile's rooms (Living + Stereo, Everywhere) still shows on the screen: its
-speakers get the music note, and the card's keys act on the group. Make one template sensor in Home Assistant
-(Settings, Devices & services, Helpers, Template, Sensor), with this state, listing the groups the rooms leave out:
+One template sensor in Home Assistant tells the screens what plays and which speakers can join or leave it. With it, a
+Google speaker group that is not one of a tile's rooms (Living + Stereo, Everywhere) still shows on the screen: its
+speakers get the music note, and the card's keys act on the group. And Add and Remove appear only where what then
+plays is a Google group made in the Google Home app (or one speaker). Make it in Settings, Devices & services,
+Helpers, Template, Sensor, with this state; G lists every Google group, S every Google speaker:
 
 ```
-{% set ns = namespace(v='none') %}
-{% for g in ['media_player.everywhere_3', 'media_player.main_house_office_2',
-             'media_player.living_formal_2', 'media_player.living_stereo_2'] %}
-  {% if ns.v == 'none' and states(g) in ['playing', 'paused', 'buffering'] %}
-    {% set ns.v = g ~ '|' ~ state_attr(g, 'active_queue') ~ '|' ~ states(g) ~ '|' ~ state_attr(g, 'friendly_name') %}
-  {% endif %}
-{% endfor %}
-{{ ns.v }}
+{%- set G = ['media_player.main_house_2', 'media_player.main_house_bedroom_2', 'media_player.everywhere_3',
+             'media_player.main_house_office_2', 'media_player.living_formal_2', 'media_player.living_stereo_2'] -%}
+{%- set S = ['media_player.living_room_google_home_2', 'media_player.stereo_3', 'media_player.family_room_display',
+             'media_player.bedroom_display_2', 'media_player.office_speaker'] -%}
+{%- set busy = ['playing', 'paused', 'buffering'] -%}
+{%- set ns = namespace(lead='', members=[], sets=[], add=[], rm=[]) -%}
+{%- for g in G -%}{%- if not ns.lead and states(g) in busy -%}
+  {%- set ns.lead = g -%}{%- set ns.members = state_attr(g, 'group_members') or [] -%}{%- endif -%}{%- endfor -%}
+{%- for s in S -%}{%- if not ns.lead and states(s) in busy -%}
+  {%- set ns.lead = s -%}{%- set ns.members = [s] -%}{%- endif -%}{%- endfor -%}
+{%- if not ns.lead -%}none{%- else -%}
+{%- for g in G -%}{%- set ns.sets = ns.sets + [(state_attr(g, 'group_members') or []) | sort | join(',')] -%}{%- endfor -%}
+{%- for s in S -%}{%- set t = s.split('.')[1][:6] -%}
+  {%- if s in ns.members -%}{%- set rest = ns.members | reject('eq', s) | list -%}
+    {%- if rest | length == 1 or (rest | sort | join(',')) in ns.sets -%}{%- set ns.rm = ns.rm + [t] -%}{%- endif -%}
+  {%- elif states(s) not in ['unavailable', 'unknown'] -%}
+    {%- if ((ns.members + [s]) | sort | join(',')) in ns.sets -%}{%- set ns.add = ns.add + [t] -%}{%- endif -%}
+  {%- endif -%}{%- endfor -%}
+{{ ns.lead }}|{{ state_attr(ns.lead, 'active_queue') }}|{{ states(ns.lead) }}|{{ state_attr(ns.lead, 'friendly_name') }}|{{ ns.add | join(',') }}|{{ ns.rm | join(',') }}
+{%- endif -%}
 ```
 
-Then pick that sensor as Group it follows in each Music tile.
+A speaker is named by the first six letters of its object id, so keep those different among the Google speakers. Then
+pick that sensor as Group it follows in each Music tile.
 
 ## Good to know
 
