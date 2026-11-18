@@ -3,7 +3,7 @@
 # its keys. Every name, label and hint below is a key into translations/<language>.json, part "app". docs/MANIFEST.md
 # in the plugins repository has every field.
 id: music_rooms
-version: "0.15.2"
+version: "0.15.4"
 # 0.15: options of kind entity (the rooms); 0.17: the cover of the tile's own player by name (cover:).
 api: "0.18"
 icon: speaker-multiple
@@ -64,20 +64,20 @@ tiles:
     domains: [media_player]
     has_attributes: [mass_player_type]
     attributes: [media_title, media_artist, media_album_name, volume_level, mass_player_type, supported_features, media_position,
-                 media_duration, media_position_updated_at, shuffle, repeat, active_queue, group_members]
+                 media_duration, media_position_updated_at, shuffle, repeat, active_queue]
     example: tile_example
     preview: { title: "{name}", value: "{media_title}" }
     options:
-      - { id: room_1, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_1, hint: room_hint }
-      - { id: room_2, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_2 }
-      - { id: room_3, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_3 }
-      - { id: room_4, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_4 }
-      - { id: room_5, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_5 }
-      - { id: room_6, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_6 }
-      - { id: room_7, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_7 }
-      - { id: room_8, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_8 }
-      - { id: room_9, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_9 }
-      - { id: room_10, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_10 }
+      - { id: room_1, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue], label: room_1, hint: room_hint }
+      - { id: room_2, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue], label: room_2 }
+      - { id: room_3, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue], label: room_3 }
+      - { id: room_4, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue], label: room_4 }
+      - { id: room_5, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue], label: room_5 }
+      - { id: room_6, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue], label: room_6 }
+      - { id: room_7, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue], label: room_7 }
+      - { id: room_8, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue], label: room_8 }
+      - { id: room_9, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue], label: room_9 }
+      - { id: room_10, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue], label: room_10 }
       # A sensor that names what plays and the speakers that can come in or go out ("<entity>|<queue>|<state>|<name>|<add>|
       # <remove>"), so a group the rooms do not list shows and Add and Remove appear only where they work. See the README.
       - { id: follow, kind: entity, domains: [sensor], label: follow, hint: follow_hint }

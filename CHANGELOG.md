@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.15.4
+
+- The rooms show what plays again while the screen's own speaker plays. Each room now sends less (no list of a
+  group's speakers, which the screen works out from what each speaker plays), so all ten fit beside the song of the
+  screen's own speaker; before, they were left out as too large and every room read Nothing playing.
+
+## 0.15.3
+
+- The card follows the group its own speaker plays in from the start: with nothing picked yet, a Stereo screen whose
+  speaker plays in Living + Stereo shows and controls Living + Stereo, not the idle Stereo.
+- What plays where (the wheel of rooms on a square screen, the list on others) shows a speaker that plays in a Google
+  group with the group's song, among the rooms that play, instead of Nothing playing.
+
 ## 0.15.2
 
 - The card follows the music when it moves to another Google group: with Main House picked, removing Formal Room

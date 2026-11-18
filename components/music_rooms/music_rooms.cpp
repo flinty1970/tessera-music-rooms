@@ -82,7 +82,7 @@ struct Room {
   bool solo = false;     // its queue says AirPlay ("ap...") or DLNA ("up..."): it plays alone, never in a Cast group
   // Music Assistant's active_queue: rooms that play from the same one play one stream (a Google group and its speakers).
   char stream[49] = "";
-  uint16_t members = 0;  // a group's speakers among the tile's rooms (group_members), one bit per slot
+  uint16_t members = 0;  // a group's speakers among the tile's rooms (those playing its queue), one bit per slot
   bool hidden = false;   // the group the tile follows (FOLLOW): it acts, it is never a row of its own
   bool used() const { return id[0] != '\0'; }
   bool shown() const { return used() && !hidden; }
@@ -156,7 +156,6 @@ class Players : public tessera::InPsram {
   void read(JsonObjectConst data) {
     if (!data["state"].isNull()) {
       read(rooms_[0], data, true);
-      rooms_[0].members = members_of(data["attributes"]["group_members"]);
     }
     char key[9];
     for (int i = 1; i < FOLLOW; ++i) {
@@ -165,12 +164,18 @@ class Players : public tessera::InPsram {
       if (room.isNull()) put(rooms_[i].state, "");
       else {
         read(rooms_[i], room, false);
-        // A Google group lists its speakers; a speaker lists none (its player type is not sent, to keep the tile's data
-        // small enough for the rooms and the group it follows).
-        JsonArrayConst list = room["attributes"]["group_members"];
-        rooms_[i].group = rooms_[i].group || list.size() > 0;
-        rooms_[i].members = members_of(list);
       }
+    }
+    // A Google group's speakers, of those the tile lists: the ones that play its queue while it plays (its list of
+    // speakers is not sent: the app shares the tile's bytes alike among the rooms, and a group with its list did not
+    // fit, nor did the rooms beside it while the tile's own player played). A group that stopped keeps the speakers it
+    // had, so the card can follow them to where the music went.
+    for (int i = 0; i < FOLLOW; ++i) {
+      Room &g = rooms_[i];
+      if (!g.used() || !g.group || !on(g) || !g.stream[0]) continue;
+      g.members = 0;
+      for (int j = 0; j < FOLLOW; ++j)
+        if (j != i && rooms_[j].used() && !rooms_[j].group && !strcmp(rooms_[j].stream, g.stream)) g.members |= 1u << j;
     }
     follow(data["entities"]["follow"]["state"] | "");
   }
@@ -207,16 +212,6 @@ class Players : public tessera::InPsram {
     for (int i = 0; i < FOLLOW; ++i)
       if (rooms_[i].used() && !rooms_[i].group && !strcmp(rooms_[i].stream, g.stream)) g.members |= 1u << i;
   }
-  // The slots of a group's speakers, of those the tile lists.
-  uint16_t members_of(JsonVariantConst list) const {
-    uint16_t mask = 0;
-    for (JsonVariantConst m : list.as<JsonArrayConst>()) {
-      const char *id = m | "";
-      for (int i = 0; i < SLOTS; ++i)
-        if (rooms_[i].used() && !strcmp(rooms_[i].id, id)) mask |= 1u << i;
-    }
-    return mask;
-  }
 
   const Room &room(int slot) const { return rooms_[slot]; }
   bool several() const { return several_; }
@@ -227,7 +222,8 @@ class Players : public tessera::InPsram {
   // group is in charge of it, so the card shows and acts on the group.
   uint16_t chosen() const {
     uint16_t picked = plugin_->chosen(index_) & used_mask();
-    if (!picked) return 1;
+    // Nothing picked: the tile's own player, or, while it plays along in a group, that group (below).
+    if (!picked) picked = 1;
     // A Google group picked that no longer plays while its speakers do (a speaker added or taken out moved the music
     // to another group, or to the speakers left): the card follows the music, to the group that plays or the speaker.
     if (__builtin_popcount(picked) == 1) {
@@ -910,7 +906,11 @@ class Players : public tessera::InPsram {
       put(room.repeat, a["repeat"] | "");
     }
     room.volume = a["volume_level"].is<float>() ? static_cast<int>(a["volume_level"].as<float>() * 100.0f + 0.5f) : -1;
-    room.group = !strcmp(a["mass_player_type"] | "", "group");
+    // A Music Assistant group: its player type where it is sent (the tile's own player), else by what it can do: a
+    // group turns on and off and cannot be joined to another, a Cast speaker joins, a screen's speaker does neither.
+    const uint32_t can = a["supported_features"] | 0u;
+    room.group = a["mass_player_type"].is<const char *>() ? !strcmp(a["mass_player_type"] | "", "group")
+                                                           : (can & 384u) == 384u && !(can & 524288u);
     put(room.stream, a["active_queue"] | "");
     // MediaPlayerEntityFeature.GROUPING: Music Assistant can join it to another player (a Cast, a Sonos), where a
     // player it reaches through another integration (a screen's own speaker) plays alone.
@@ -1834,11 +1834,19 @@ class MusicCard : public tessera::Card {
   void paint_playing(Players &tile) {
     entries_ = 0;
     int listed[SLOTS];
+    // A speaker of a Google group reports idle while the group plays: it shows (and sorts with) what its group plays.
+    auto source = [&tile](int slot) -> const Room & {
+      const Room &r = tile.room(slot);
+      if (Players::on(r)) return r;
+      const int holder = tile.group_holding(slot);
+      return holder >= 0 ? tile.room(holder) : r;
+    };
     for (int pass = 0; pass < 3; ++pass)
       for (int i = 0; i < SLOTS; ++i) {
         const Room &r = tile.room(i);
         if (!r.shown()) continue;
-        const int rank = !strcmp(r.state, "playing") ? 0 : !strcmp(r.state, "paused") ? 1 : 2;
+        const Room &s = source(i);
+        const int rank = !strcmp(s.state, "playing") ? 0 : !strcmp(s.state, "paused") ? 1 : 2;
         if (rank == pass) listed[entries_++] = i;
       }
     const int lead = tile.lead_slot();
@@ -1855,7 +1863,7 @@ class MusicCard : public tessera::Card {
         if (slot == lead) at_lead = n;
         if (n) lines += '\n';
         lines += tile.room(slot).name;
-        const std::string what = playing_words(tile.room(slot));
+        const std::string what = gone(tile.room(slot).state) ? playing_words(tile.room(slot)) : playing_words(source(slot));
         if (!what.empty()) lines += std::string(" — ") + what;
       }
       // The wheel keeps its place while what plays changes; it starts on the room the card holds.
@@ -1898,8 +1906,9 @@ class MusicCard : public tessera::Card {
       const int slot = listed[at];
       row_entry_[i] = slot;
       const Room &r = tile.room(slot);
-      const bool playing = !strcmp(r.state, "playing"), paused = !strcmp(r.state, "paused");
-      const std::string what = playing_words(r);
+      const Room &src = gone(r.state) ? r : source(slot);
+      const bool playing = !strcmp(src.state, "playing"), paused = !strcmp(src.state, "paused");
+      const std::string what = playing_words(src);
       row(i, playing ? ICON_PLAY : paused ? ICON_PAUSE : ICON_SPEAKER, r.name, what, slot == lead, gone(r.state));
     }
     pager(entries_);
