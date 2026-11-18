@@ -216,16 +216,19 @@ class Players : public tessera::InPsram {
     return -1;
   }
   // The stream a room plays, "" while it plays nothing.
-  // The playing group that lists this speaker and plays its stream, -1 when none: a Google group's speakers report
-  // idle while the group plays, with the group's queue as theirs.
+  // The playing room that lists this speaker and plays its stream, -1 when none: a Google group's speakers, and a
+  // speaker added to another one, report idle while they play along, with the queue they play as theirs. A group first.
   int group_holding(int slot) const {
     const Room &r = rooms_[slot];
     if (!r.used() || r.group || !r.stream[0]) return -1;
+    int found = -1;
     for (int j = 0; j < SLOTS; ++j) {
       const Room &g = rooms_[j];
-      if (j != slot && g.used() && g.group && on(g) && (g.members & (1u << slot)) && !strcmp(g.stream, r.stream)) return j;
+      if (j == slot || !g.used() || !on(g) || !(g.members & (1u << slot)) || strcmp(g.stream, r.stream)) continue;
+      if (g.group) return j;
+      if (found < 0) found = j;
     }
-    return -1;
+    return found;
   }
   const char *stream_of(int slot) const {
     const Room &r = rooms_[slot];
@@ -313,7 +316,7 @@ class Players : public tessera::InPsram {
     // A speaker of a Google group that plays reports idle while the group plays: it is in the group all the same.
     if (r.used() && !r.group) {
       const int g = group_holding(slot);
-      if (g >= 0) return g;
+      if (g >= 0 && rooms_[g].group) return g;
     }
     if (!r.used() || r.group || !r.queue[0] || !on(r)) return -1;
     for (int j = 0; j < SLOTS; ++j) {

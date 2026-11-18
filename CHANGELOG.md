@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.14.3
+
+- A speaker added to another one (Display - Formal Room added to Speaker - Living Room) reports "idle" while it plays
+  along. Rooms now counts it in that stream too: the green outline, Remove and the song, as for a Google group's speakers.
+
 ## 0.14.2
 
 - While nothing plays, tap a room's name on Rooms to make it the room the card controls (Here): the next item plays
