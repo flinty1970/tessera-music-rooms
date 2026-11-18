@@ -242,9 +242,26 @@ class Players : public tessera::InPsram {
   }
   // A room's kind as the tablet colours it: a Google speaker group, a Google speaker (it groups), a screen's own speaker.
   enum class Kind : uint8_t { GROUP, GOOGLE, SCREEN };
+  // A screen's own speaker plays from a Music Assistant queue named after its entity ("media_player...."); a Google
+  // speaker's queue is a long id, whether or not it says it can group at the moment.
   Kind kind_of_room(int slot) const {
     const Room &r = rooms_[slot];
-    return r.group ? Kind::GROUP : r.sync ? Kind::GOOGLE : Kind::SCREEN;
+    if (r.group) return Kind::GROUP;
+    if (!strncmp(r.stream, "media_player.", 13)) return Kind::SCREEN;
+    return r.sync || r.stream[0] ? Kind::GOOGLE : Kind::SCREEN;
+  }
+  // Whether adding this speaker to what plays makes up a Google group exactly (Main House + the Bedroom display is Main
+  // House + Bedroom): Google speakers play in step only as a group made in the Google Home app, never joined on the fly.
+  bool completes_group(int slot) const {
+    const int lead = lead_slot();
+    const Room &l = rooms_[lead];
+    const uint16_t base = l.group ? l.members : static_cast<uint16_t>((1u << lead) | l.members);
+    const uint16_t target = base | (1u << slot);
+    for (int j = 0; j < SLOTS; ++j) {
+      const Room &g = rooms_[j];
+      if (j != lead && g.used() && g.group && !gone(g.state) && g.members && g.members == target) return true;
+    }
+    return false;
   }
   // The key of a room on Rooms, as the tablet's: the room the card holds (Here), a speaker in its stream (Remove), one
   // that can join it or a group that has the speaker that plays (Add), a group that would take another stream (Can't
@@ -258,9 +275,9 @@ class Players : public tessera::InPsram {
     const Room &l = rooms_[lead];
     const Kind kind = kind_of_room(slot);
     if (!on(l)) {
-      // Nothing plays: the rooms ticked play the next item; a group is picked alone.
-      if (kind == Kind::SCREEN && !several_) return Key::NONE;
-      return (chosen() & (1u << slot)) ? Key::REMOVE : Key::ADD;
+      // Nothing plays: a group is picked alone with Add; a speaker by a tap on its name (Google speakers do not play
+      // together but as a Google group).
+      return kind == Kind::GROUP ? Key::ADD : Key::NONE;
     }
     if (kind == Kind::GROUP) {
       // A group that has the speaker in charge (or, in charge, a group whose speakers it all has) spreads the music.
@@ -269,8 +286,8 @@ class Players : public tessera::InPsram {
     }
     if (kind == Kind::SCREEN) return Key::NONE;
     if (same_stream(slot, lead)) return Key::REMOVE;
-    // A Google speaker joins a Google speaker or group; not a screen's speaker.
-    return kind_of_room(lead) == Kind::SCREEN ? Key::CANNOT : Key::ADD;
+    // A Google speaker comes in only where it makes up a Google group with what plays; else it can be moved there only.
+    return kind_of_room(lead) != Kind::SCREEN && completes_group(slot) ? Key::ADD : Key::CANNOT;
   }
   // Move here: every other room, while the room in charge plays.
   bool can_move(int slot) const {

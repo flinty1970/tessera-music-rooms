@@ -47,7 +47,7 @@
     "volume_all": "All {n} %",
     "cannot_join": "Can't join",
     "cannot_join_title": "{room} can't join",
-    "cannot_join_body": "{room} can't play together with {lead}, and Home Assistant has no join script to move the music. Only speakers that can group (Google and Cast speakers, AirPlay) play in step; a screen's own speaker plays on its own.",
+    "cannot_join_body": "{room} can't play together with {lead}. Google speakers play in step only as a group made in the Google Home app (such as Main House): make the group there and add it to this tile. Move here plays the music in {room} instead.",
     "moves_here": "Moves here",
     "pick_one": "Tap the one room to play in",
     "where_none": "Nothing plays now.",

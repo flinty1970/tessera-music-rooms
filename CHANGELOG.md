@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.14.4
+
+- Google speakers play in step only as a group made in the Google Home app: Add on a Google speaker now shows only
+  where it makes up such a group with what plays (Main House + the Bedroom display is Main House + Bedroom). Elsewhere
+  it says Can't add, and a tap tells why; Move here still moves the music. Adding a speaker on the fly started a second
+  stream instead, which a Spotify account stops after a moment.
+- A screen's own speaker is told by its Music Assistant queue, so a Google speaker that stops saying it can group
+  (after Music Assistant restarts) stays blue.
+
 ## 0.14.3
 
 - A speaker added to another one (Display - Formal Room added to Speaker - Living Room) reports "idle" while it plays
