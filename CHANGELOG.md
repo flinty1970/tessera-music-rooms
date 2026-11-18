@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.14.8
+
+- The cover changes with every song: its address now carries a short code of the song, so the screen fetches the new
+  picture instead of keeping the one it already had under the same address.
+
 ## 0.14.7
 
 - The cover of the tile's own room comes from its cover image in Home Assistant (image.music_cover_...), as the other

@@ -110,7 +110,14 @@ static std::string clock_of(int seconds) {
 static std::string cover_of(const Room &r, bool own) {
   (void) own;
   const char *dot = strchr(r.id, '.');
-  return std::string("/api/image_proxy/image.music_cover_") + (dot ? dot + 1 : r.id);
+  // The address changes with the song (a short code of its title and artist), so the screen fetches the new cover: it
+  // keeps a picture by its address, and the image entity's own address stays the same from song to song.
+  uint32_t h = 2166136261u;
+  for (const char *c = r.title; *c; ++c) h = (h ^ static_cast<uint8_t>(*c)) * 16777619u;
+  for (const char *c = r.artist; *c; ++c) h = (h ^ static_cast<uint8_t>(*c)) * 16777619u;
+  char code[12];
+  snprintf(code, sizeof(code), "%08x", static_cast<unsigned>(h));
+  return std::string("/api/image_proxy/image.music_cover_") + (dot ? dot + 1 : r.id) + "?song=" + code;
 }
 
 // ---- A tile's players: its own and its rooms, their states, which rooms play next, and how an item plays ----
