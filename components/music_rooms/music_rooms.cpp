@@ -275,8 +275,7 @@ class Players : public tessera::InPsram {
     const Room &l = rooms_[lead];
     const Kind kind = kind_of_room(slot);
     if (!on(l)) {
-      // Nothing plays: a group is picked alone with Add; a speaker by a tap on its name (Google speakers do not play
-      // together but as a Google group).
+      // Nothing plays: a group is picked alone with Add; a speaker by a tap on its name.
       return kind == Kind::GROUP ? Key::ADD : Key::NONE;
     }
     if (kind == Kind::GROUP) {
@@ -286,8 +285,11 @@ class Players : public tessera::InPsram {
     }
     if (kind == Kind::SCREEN) return Key::NONE;
     if (same_stream(slot, lead)) return Key::REMOVE;
-    // A Google speaker comes in only where it makes up a Google group with what plays; else it can be moved there only.
-    return kind_of_room(lead) != Kind::SCREEN && completes_group(slot) ? Key::ADD : Key::CANNOT;
+    // A Google speaker comes in where it makes up a Google group with what plays, or where Music Assistant can join it
+    // to the speaker that plays (both say they can group); else it can be moved there only.
+    if (kind_of_room(lead) == Kind::SCREEN) return Key::CANNOT;
+    if (completes_group(slot)) return Key::ADD;
+    return !l.group && joinable(lead) && joinable(slot) ? Key::ADD : Key::CANNOT;
   }
   // Move here: every other room, while the room in charge plays.
   bool can_move(int slot) const {

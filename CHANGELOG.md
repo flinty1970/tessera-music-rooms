@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.14.5
+
+- Add on a Google speaker shows again wherever Music Assistant can join it to the speaker that plays (both say they
+  can group), as on the music dashboard, as well as where it makes up a Google group. Can't add only where Music
+  Assistant says it cannot group.
+
 ## 0.14.4
 
 - Google speakers play in step only as a group made in the Google Home app: Add on a Google speaker now shows only
