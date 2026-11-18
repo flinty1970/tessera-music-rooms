@@ -106,26 +106,31 @@ volume, the groups in colour, and the library and search. See `dashboard/README.
 
 ## The group it follows
 
-One template sensor in Home Assistant tells the screens what plays and which speakers can join or leave it. With it, a
-Google speaker group that is not one of a tile's rooms (Living + Stereo, Everywhere) still shows on the screen: its
+One template sensor in Home Assistant tells the screens what plays and which speakers can join or leave it. It finds
+your speaker groups by itself: every Music Assistant player of type group (a group made in the Google Home app shows
+up as one), and as speakers every player those groups list. Make a group in the Google Home app, and once Music
+Assistant shows it the screens follow it, with no change here and no new build.
+
+With it, a group that is not one of a tile's rooms (Living + Stereo, Everywhere) still shows on the screen: its
 speakers get the music note, and the card's keys act on the group. And Add and Remove appear only where what then
-plays is a Google group made in the Google Home app (or one speaker). Make it in Settings, Devices & services,
-Helpers, Template, Sensor, with this state; G lists every Google group, S every Google speaker:
+plays is a group (or one speaker). Make it in Settings, Devices & services, Helpers, Template, Sensor, with this
+state, as it is:
 
 ```
-{%- set G = ['media_player.main_house_2', 'media_player.main_house_bedroom_2', 'media_player.everywhere_3',
-             'media_player.main_house_office_2', 'media_player.living_formal_2', 'media_player.living_stereo_2'] -%}
-{%- set S = ['media_player.living_room_google_home_2', 'media_player.stereo_3', 'media_player.family_room_display',
-             'media_player.bedroom_display_2', 'media_player.office_speaker'] -%}
+{%- set G = states.media_player | selectattr('attributes.mass_player_type', 'defined')
+    | selectattr('attributes.mass_player_type', 'eq', 'group') | selectattr('attributes.group_members', 'defined')
+    | rejectattr('state', 'in', ['unavailable', 'unknown']) | map(attribute='entity_id') | list -%}
 {%- set busy = ['playing', 'paused', 'buffering'] -%}
-{%- set ns = namespace(lead='', members=[], sets=[], add=[], rm=[]) -%}
+{%- set ns = namespace(lead='', members=[], sets=[], add=[], rm=[], S=[]) -%}
+{%- for g in G -%}{%- for m in state_attr(g, 'group_members') or [] -%}
+  {%- if m not in ns.S -%}{%- set ns.S = ns.S + [m] -%}{%- endif -%}{%- endfor -%}{%- endfor -%}
 {%- for g in G -%}{%- if not ns.lead and states(g) in busy -%}
   {%- set ns.lead = g -%}{%- set ns.members = state_attr(g, 'group_members') or [] -%}{%- endif -%}{%- endfor -%}
-{%- for s in S -%}{%- if not ns.lead and states(s) in busy -%}
+{%- for s in ns.S -%}{%- if not ns.lead and states(s) in busy -%}
   {%- set ns.lead = s -%}{%- set ns.members = [s] -%}{%- endif -%}{%- endfor -%}
 {%- if not ns.lead -%}none{%- else -%}
 {%- for g in G -%}{%- set ns.sets = ns.sets + [(state_attr(g, 'group_members') or []) | sort | join(',')] -%}{%- endfor -%}
-{%- for s in S -%}{%- set t = s.split('.')[1][:6] -%}
+{%- for s in ns.S -%}{%- set t = s.split('.')[1][:6] -%}
   {%- if s in ns.members -%}{%- set rest = ns.members | reject('eq', s) | list -%}
     {%- if rest | length == 1 or (rest | sort | join(',')) in ns.sets -%}{%- set ns.rm = ns.rm + [t] -%}{%- endif -%}
   {%- elif states(s) not in ['unavailable', 'unknown'] -%}
@@ -135,8 +140,9 @@ Helpers, Template, Sensor, with this state; G lists every Google group, S every 
 {%- endif -%}
 ```
 
-A speaker is named by the first six letters of its object id, so keep those different among the Google speakers. Then
-pick that sensor as Group it follows in each Music tile.
+Then pick that sensor as Group it follows in each Music tile. A speaker is named by the first six letters of its
+object id, so keep those different among your grouped speakers. Rooms you want as rows on a screen are still chosen
+per tile in the Tessera app, without a new build; for a group's cover, make its image entity as for every room.
 
 ## Good to know
 
