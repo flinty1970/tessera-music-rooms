@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.14.2
+
+- While nothing plays, tap a room's name on Rooms to make it the room the card controls (Here): the next item plays
+  there alone. Add still adds more rooms to it.
+
 ## 0.14.1
 
 - A Google speaker group's speakers report "idle" while the group plays. Rooms now counts them as playing in the group:

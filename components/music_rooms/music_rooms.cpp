@@ -2191,6 +2191,12 @@ class MusicCard : public tessera::Card {
         tile.focus(slot);
         page_no_ = 0;
         show(View::NOW);
+        return;
+      }
+      // While nothing plays where the card is, a room tapped becomes the room the next item plays in, alone.
+      if (!Players::on(tile.room(tile.lead_slot())) && slot != tile.lead_slot()) {
+        tile.focus(slot);
+        paint();
       }
       return;
     }
