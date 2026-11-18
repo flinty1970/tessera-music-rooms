@@ -234,10 +234,12 @@ class Players : public tessera::InPsram {
       const int g = __builtin_ctz(picked);
       if (rooms_[g].group && !on(rooms_[g]))
         for (int m = 0; m < SLOTS; ++m) {
-          if (!(rooms_[g].members & (1u << m)) || !on(rooms_[m])) continue;
+          if (!(rooms_[g].members & (1u << m))) continue;
+          // A speaker of a Google group reports idle while its group plays: the group that plays it now (one the tile
+          // lists or the one it follows) is where the music went; else the speaker itself, while it plays alone.
           const int o = playing_group_of(m);
-          picked = 1u << (o >= 0 ? o : m);
-          break;
+          if (o >= 0 && o != g) { picked = 1u << o; break; }
+          if (on(rooms_[m])) { picked = 1u << m; break; }
         }
     }
     for (int i = 0; i < SLOTS; ++i) {

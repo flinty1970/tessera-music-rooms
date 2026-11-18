@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.2
+
+- The card follows the music when it moves to another Google group: with Main House picked, removing Formal Room
+  moves the music to Living + Stereo, and the card shows and acts on Living + Stereo instead of Nothing playing. Its
+  speakers report idle while the group plays, so the card now looks for the group that holds them.
+
 ## 0.15.1
 
 - Add and Remove appear only where they work: where what then plays is a Google speaker group made in the Google Home
