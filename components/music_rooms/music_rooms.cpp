@@ -103,11 +103,12 @@ static std::string clock_of(int seconds) {
   return words;
 }
 
-// The cover of what plays in a room: the tile's own player's as the screen shows it (`cover:`); another room's from its
-// image entity in Home Assistant (image.music_cover_<the player's object id>, made once per player, see the README),
-// which Tessera may show on a tile of an entity as Home Assistant's own picture.
+// The cover of what plays in a room, the tile's own player's too: from its image entity in Home Assistant
+// (image.music_cover_<the player's object id>, made once per player, see the README), which Home Assistant fetches
+// itself. A Music Assistant player's own picture (`cover:`) is an address on the Music Assistant server, which the
+// screen's picture does not follow from song to song.
 static std::string cover_of(const Room &r, bool own) {
-  if (own) return std::string("cover:") + r.id;
+  (void) own;
   const char *dot = strchr(r.id, '.');
   return std::string("/api/image_proxy/image.music_cover_") + (dot ? dot + 1 : r.id);
 }

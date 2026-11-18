@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.14.7
+
+- The cover of the tile's own room comes from its cover image in Home Assistant (image.music_cover_...), as the other
+  rooms' do: a Music Assistant player's own picture is an address on the Music Assistant server, and the tile and card
+  kept an old cover from it. Every room of a tile needs its cover image (see the README).
+
 ## 0.14.6
 
 - Add and Remove follow your Google speaker groups, as the music dashboard does: a speaker comes in or goes out only
