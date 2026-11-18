@@ -89,6 +89,7 @@
     "room_8": "Room 8",
     "room_9": "Room 9",
     "room_10": "Room 10",
-    "room_11": "Room 11"
+    "follow": "Group it follows",
+    "follow_hint": "A sensor that names the Google speaker group playing that the rooms above leave out, as entity|queue|state|name. Its speakers then show that they play, and the keys act on it."
   }
 }

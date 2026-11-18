@@ -104,6 +104,25 @@ volume, the groups in colour, and the library and search. See `dashboard/README.
   (`media_player.unjoin`), so it plays in exactly the rooms ticked.
 - The keys of Now playing act on the first room, which leads a group.
 
+## The group it follows
+
+A Google speaker group that is not one of a tile's rooms (Living + Stereo, Everywhere) still shows on the screen: its
+speakers get the music note, and the card's keys act on the group. Make one template sensor in Home Assistant
+(Settings, Devices & services, Helpers, Template, Sensor), with this state, listing the groups the rooms leave out:
+
+```
+{% set ns = namespace(v='none') %}
+{% for g in ['media_player.everywhere_3', 'media_player.main_house_office_2',
+             'media_player.living_formal_2', 'media_player.living_stereo_2'] %}
+  {% if ns.v == 'none' and states(g) in ['playing', 'paused', 'buffering'] %}
+    {% set ns.v = g ~ '|' ~ state_attr(g, 'active_queue') ~ '|' ~ states(g) ~ '|' ~ state_attr(g, 'friendly_name') %}
+  {% endif %}
+{% endfor %}
+{{ ns.v }}
+```
+
+Then pick that sensor as Group it follows in each Music tile.
+
 ## Good to know
 
 - The library comes from Music Assistant's own `music_assistant.get_library`, four to six items at a time; a search
@@ -111,13 +130,13 @@ volume, the groups in colour, and the library and search. See `dashboard/README.
 - The Tessera app gives a plugin at most 48 characters of a text, and a Spotify artist's or playlist's address is
   longer: with the play script (Set up, step 7) Home Assistant finds the one item whose address starts so; without it
   such an item plays by its name (and artist) through `music_assistant.play_media`.
-- A tile's data is about 2.6 KB for its own player and eleven rooms together, so a room sends only its state, name
+- A tile's data is about 2.6 KB for its own player, ten rooms and the group it follows together, so a room sends only its state, name
   and volume: what plays there, how far and shuffle and repeat come from its Music Assistant queue
   (`music_assistant.get_queue`), asked by the screen while the room plays.
 - An item whose Music Assistant address is longer than 48 characters shows faded and plays nothing: the Tessera app
   keeps no longer text for a plugin.
 - The cover of the tile's own player always shows; another room's shows through its image entity (Set up, step 6).
-- Up to eleven rooms beside the tile's own player. The tile's own player is where it plays until you pick another.
+- Up to ten rooms beside the tile's own player. The tile's own player is where it plays until you pick another.
 - A Music Assistant group ticked together with other rooms is not joined to them: each gets the item on its own, so
   they play the same thing but not exactly in step. A group ticked alone plays in sync as always.
 - A Spotify account that allows one stream at a time cannot play the same thing on two rooms apart: the second stops

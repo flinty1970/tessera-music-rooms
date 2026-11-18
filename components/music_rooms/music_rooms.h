@@ -7,8 +7,11 @@ namespace esphome::music_rooms {
 class Players;
 class MusicCard;
 
-// The places a tile keeps its players in: its own (0) and its eleven rooms (the options room_1 to room_11).
+// The places a tile keeps its players in: its own (0), its ten rooms (the options room_1 to room_10) and, last, the group it follows.
 constexpr int SLOTS = 12;
+// The last slot is no room of the list: the Google group that plays and that the tile does not list (Living + Stereo,
+// Everywhere), named by the tile's `follow` sensor, so the speakers it plays on show it and the keys act on it.
+constexpr int FOLLOW = SLOTS - 1;
 // Music tiles a layout has at most. The plugin keeps what it holds of each by the tile's slot on the screen, which can
 // be any number (a screen of many pages and top bar items has slots past 80), so it is a short table, not an array.
 constexpr int TILES = 16;

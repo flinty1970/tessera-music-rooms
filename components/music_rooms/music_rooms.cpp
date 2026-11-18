@@ -72,7 +72,7 @@ struct Room {
   int8_t shuffle = -1;   // 1 on, 0 off, -1 not known
   char repeat[6] = "";   // off, all or one
   uint32_t updated = 0;  // when Home Assistant last heard of it (a room's): a new song changes it
-  // A room other than the tile's own comes with its state, name and volume only, so eleven fit the tile's data; what
+  // A room other than the tile's own comes with its state, name and volume only, so ten and a followed group fit the tile's data; what
   // plays there comes from its Music Assistant queue (music_assistant.get_queue), asked by the screen: the question
   // that is out, when it went, and what the room was then.
   uint32_t asked = 0, asked_at = 0, asked_updated = 0;
@@ -83,7 +83,9 @@ struct Room {
   // Music Assistant's active_queue: rooms that play from the same one play one stream (a Google group and its speakers).
   char stream[49] = "";
   uint16_t members = 0;  // a group's speakers among the tile's rooms (group_members), one bit per slot
+  bool hidden = false;   // the group the tile follows (FOLLOW): it acts, it is never a row of its own
   bool used() const { return id[0] != '\0'; }
+  bool shown() const { return used() && !hidden; }
 };
 
 // How far a song is now, in seconds; -1 without a length (a stream). A playing song moves on from where it was.
@@ -131,7 +133,7 @@ class Players : public tessera::InPsram {
   void configure(const char *own, JsonObjectConst options) {
     put(rooms_[0].id, own);
     char key[9];
-    for (int i = 1; i < SLOTS; ++i) {
+    for (int i = 1; i < FOLLOW; ++i) {
       snprintf(key, sizeof(key), "room_%d", i);
       const char *id = options[key] | "";
       // A room that is the tile's own player, or one named twice, is the one already listed.
@@ -139,6 +141,8 @@ class Players : public tessera::InPsram {
       for (int j = 1; j < i && !twice; ++j) twice = !strcmp(id, rooms_[j].id);
       put(rooms_[i].id, twice ? "" : id);
     }
+    rooms_[FOLLOW] = Room();
+    rooms_[FOLLOW].hidden = true;
     // Several rooms at once, always since 0.8.0 (the setting gave its place to a tenth room); a tile saved with One
     // keeps it.
     several_ = strcmp(options["rooms_at_once"] | "several", "one") != 0;
@@ -155,15 +159,44 @@ class Players : public tessera::InPsram {
       rooms_[0].members = members_of(data["attributes"]["group_members"]);
     }
     char key[9];
-    for (int i = 1; i < SLOTS; ++i) {
+    for (int i = 1; i < FOLLOW; ++i) {
       snprintf(key, sizeof(key), "room_%d", i);
       JsonObjectConst room = data["entities"][key];
       if (room.isNull()) put(rooms_[i].state, "");
       else {
         read(rooms_[i], room, false);
-        rooms_[i].members = members_of(room["attributes"]["group_members"]);
+        // A Google group lists its speakers; a speaker lists none (its player type is not sent, to keep the tile's data
+        // small enough for the rooms and the group it follows).
+        JsonArrayConst list = room["attributes"]["group_members"];
+        rooms_[i].group = rooms_[i].group || list.size() > 0;
+        rooms_[i].members = members_of(list);
       }
     }
+    follow(data["entities"]["follow"]["state"] | "");
+  }
+  // The `follow` sensor's state: "<group entity>|<its queue>|<its state>|<its name>" while a Google group the tile does
+  // not list plays, anything else while none does. Its speakers are those of the tile that play from its queue.
+  void follow(const char *text) {
+    Room &g = rooms_[FOLLOW];
+    char part[4][64] = {};
+    int n = 0, at = 0;
+    for (const char *c = text; *c && n < 4; ++c) {
+      if (*c == '|') { part[n++][at] = '\0'; at = 0; continue; }
+      if (at < 63) part[n][at++] = *c;
+    }
+    if (n < 4) part[n][at] = '\0';
+    if (n < 3 || strncmp(part[0], "media_player.", 13) || !part[1][0]) {
+      if (g.used()) { g = Room(); g.hidden = true; }
+      return;
+    }
+    if (strcmp(g.id, part[0])) { g = Room(); g.hidden = true; put(g.id, part[0]); }
+    put(g.stream, part[1]);
+    put(g.state, part[2]);
+    put(g.name, part[3][0] ? part[3] : part[0]);
+    g.group = true;
+    g.members = 0;
+    for (int i = 0; i < FOLLOW; ++i)
+      if (rooms_[i].used() && !rooms_[i].group && !strcmp(rooms_[i].stream, g.stream)) g.members |= 1u << i;
   }
   // The slots of a group's speakers, of those the tile lists.
   uint16_t members_of(JsonVariantConst list) const {
@@ -362,7 +395,11 @@ class Players : public tessera::InPsram {
     for (int i = 0; i < SLOTS; ++i) if (rooms_[i].used()) mask |= 1u << i;
     return mask;
   }
-  int room_count() const { return __builtin_popcount(used_mask()); }
+  int room_count() const {
+    int n = 0;
+    for (int i = 0; i < SLOTS; ++i) n += rooms_[i].shown();
+    return n;
+  }
   // The card takes this room over (what plays where, a tap on a room): its keys act on it and the next item plays
   // there; nothing is joined, taken apart or stopped, in this room or any other.
   void focus(int slot) {
@@ -1769,7 +1806,7 @@ class MusicCard : public tessera::Card {
     for (int pass = 0; pass < 3; ++pass)
       for (int i = 0; i < SLOTS; ++i) {
         const Room &r = tile.room(i);
-        if (!r.used()) continue;
+        if (!r.shown()) continue;
         const int rank = !strcmp(r.state, "playing") ? 0 : !strcmp(r.state, "paused") ? 1 : 2;
         if (rank == pass) listed[entries_++] = i;
       }
@@ -1912,7 +1949,7 @@ class MusicCard : public tessera::Card {
     if (!key_w_) size_keys();
     entries_ = 0;
     int listed[SLOTS];
-    for (int i = 0; i < SLOTS; ++i) if (tile.room(i).used()) listed[entries_++] = i;
+    for (int i = 0; i < SLOTS; ++i) if (tile.room(i).shown()) listed[entries_++] = i;
     const int first = page_no_ * room_rows_;
     const int lead = tile.lead_slot();
     const bool lead_on = Players::on(tile.room(lead));
@@ -1937,8 +1974,11 @@ class MusicCard : public tessera::Card {
       const bool mine = lead_on && tile.same_stream(slot, lead);
       outline(r, !stream[0] ? -1 : mine ? static_cast<int>(theme::MARK_GREEN) : static_cast<int>(stream_role(stream)));
       const int pad = gap_ + ui::px(4), icon_w = lv_obj_get_width(r.icon);
-      set_icon(r.icon, kind == Players::Kind::GROUP ? ICON_ROOMS : ICON_SPEAKER);
-      ui::set_color(r.icon, tint);
+      // A room that plays (also a speaker that plays along in a group) shows a music note, in green where it plays what
+      // the card holds, in its stream's colour where it plays something else.
+      const bool sounding = stream[0] != '\0' && !gone(room.state);
+      set_icon(r.icon, sounding ? ICON_MUSIC : kind == Players::Kind::GROUP ? ICON_ROOMS : ICON_SPEAKER);
+      ui::set_color(r.icon, !sounding ? tint : mine ? theme::MARK_GREEN : stream_role(stream));
       lv_obj_set_pos(r.icon, pad, (row_h - ui::line_height(Font::ICON_SMALL)) / 2);
       // The keys at the right: Move here last, the room's key before it.
       int right = width_ - pad;

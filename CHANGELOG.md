@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.15.0
+
+- A room that plays shows a music note instead of its speaker, green where it plays what the card holds, so you see
+  at a glance where music is on. A speaker that plays along in a Google group shows it too.
+- New option, Group it follows: a sensor naming the Google speaker group that plays when it is not one of the rooms
+  (Living + Stereo, Everywhere). Its speakers then show as playing, and the card's keys act on that group.
+- A Google group is known by the speakers it lists; the rooms no longer need the player type, which keeps the tile's
+  data small enough for the group it follows.
+- Room 11 gives its place to Group it follows: a tile lists ten rooms beside its own player.
+
 ## 0.14.9
 
 - Rooms works as the tablet does: a Google speaker that plays along shows Remove, and one that can be grouped shows Add

@@ -3,7 +3,7 @@
 # its keys. Every name, label and hint below is a key into translations/<language>.json, part "app". docs/MANIFEST.md
 # in the plugins repository has every field.
 id: music_rooms
-version: "0.14.9"
+version: "0.15.0"
 # 0.15: options of kind entity (the rooms); 0.17: the cover of the tile's own player by name (cover:).
 api: "0.18"
 icon: speaker-multiple
@@ -68,17 +68,19 @@ tiles:
     example: tile_example
     preview: { title: "{name}", value: "{media_title}" }
     options:
-      - { id: room_1, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features, active_queue, group_members], label: room_1, hint: room_hint }
-      - { id: room_2, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features, active_queue, group_members], label: room_2 }
-      - { id: room_3, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features, active_queue, group_members], label: room_3 }
-      - { id: room_4, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features, active_queue, group_members], label: room_4 }
-      - { id: room_5, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features, active_queue, group_members], label: room_5 }
-      - { id: room_6, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features, active_queue, group_members], label: room_6 }
-      - { id: room_7, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features, active_queue, group_members], label: room_7 }
-      - { id: room_8, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features, active_queue, group_members], label: room_8 }
-      - { id: room_9, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features, active_queue, group_members], label: room_9 }
-      - { id: room_10, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features, active_queue, group_members], label: room_10 }
-      - { id: room_11, kind: entity, domains: [media_player], attributes: [volume_level, mass_player_type, supported_features, active_queue, group_members], label: room_11 }
+      - { id: room_1, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_1, hint: room_hint }
+      - { id: room_2, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_2 }
+      - { id: room_3, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_3 }
+      - { id: room_4, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_4 }
+      - { id: room_5, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_5 }
+      - { id: room_6, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_6 }
+      - { id: room_7, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_7 }
+      - { id: room_8, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_8 }
+      - { id: room_9, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_9 }
+      - { id: room_10, kind: entity, domains: [media_player], attributes: [volume_level, supported_features, active_queue, group_members], label: room_10 }
+      # A sensor that names the Google group playing that the rooms do not list ("<entity>|<queue>|<state>|<name>"), so
+      # its speakers show that they play and the keys act on it. See the README.
+      - { id: follow, kind: entity, domains: [sensor], label: follow, hint: follow_hint }
       # The source the Library key opens: the list of kinds, the favourites, or one kind (Radio, Playlists, ...).
       - { id: open_on, kind: choice, label: open_on, hint: open_on_hint, default: kinds,
           choices: [{ value: kinds, label: open_kinds }, { value: favourites, label: open_favourites },
