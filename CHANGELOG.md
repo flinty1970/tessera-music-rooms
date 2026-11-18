@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.14.9
+
+- Rooms works as the tablet does: a Google speaker that plays along shows Remove, and one that can be grouped shows Add
+  while a Google speaker or group plays (Home Assistant makes it the Google group that matches, where one does). A
+  screen's own speaker shows only Move here.
+
 ## 0.14.8
 
 - The cover changes with every song: its address now carries a short code of the song, so the screen fetches the new

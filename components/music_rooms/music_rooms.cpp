@@ -258,32 +258,6 @@ class Players : public tessera::InPsram {
     if (!strncmp(r.stream, "media_player.", 13)) return Kind::SCREEN;
     return r.sync || r.stream[0] ? Kind::GOOGLE : Kind::SCREEN;
   }
-  // Whether taking this speaker out of the playing group leaves a Google group exactly, or one speaker alone.
-  bool leaves_group(int slot) const {
-    const int lead = lead_slot();
-    const Room &l = rooms_[lead];
-    if (!l.group || !l.members) return false;
-    const uint16_t rest = l.members & static_cast<uint16_t>(~(1u << slot));
-    if (__builtin_popcount(rest) == 1) return true;
-    for (int j = 0; j < SLOTS; ++j) {
-      const Room &g = rooms_[j];
-      if (j != lead && g.used() && g.group && !gone(g.state) && g.members == rest) return true;
-    }
-    return false;
-  }
-  // Whether adding this speaker to what plays makes up a Google group exactly (Main House + the Bedroom display is Main
-  // House + Bedroom): Google speakers play in step only as a group made in the Google Home app, never joined on the fly.
-  bool completes_group(int slot) const {
-    const int lead = lead_slot();
-    const Room &l = rooms_[lead];
-    const uint16_t base = l.group ? l.members : static_cast<uint16_t>((1u << lead) | l.members);
-    const uint16_t target = base | (1u << slot);
-    for (int j = 0; j < SLOTS; ++j) {
-      const Room &g = rooms_[j];
-      if (j != lead && g.used() && g.group && !gone(g.state) && g.members && g.members == target) return true;
-    }
-    return false;
-  }
   // The key of a room on Rooms, as the tablet's: the room the card holds (Here), a speaker in its stream (Remove), one
   // that can join it or a group that has the speaker that plays (Add), a group that would take another stream (Can't
   // add); a screen's own speaker has no key, only Move here.
@@ -305,11 +279,12 @@ class Players : public tessera::InPsram {
       return has ? Key::ADD : Key::CANNOT;
     }
     if (kind == Kind::SCREEN) return Key::NONE;
-    // Google speakers play in step only as a group made in the Google Home app: a speaker comes in or goes out only
-    // where what then plays is such a group (or one speaker alone); elsewhere it can be moved there only.
-    if (same_stream(slot, lead)) return leaves_group(slot) ? Key::REMOVE : Key::NONE;
+    // As the tablet: a Google speaker that plays along comes out (Remove); one that can be grouped comes in (Add) while
+    // a Google speaker or group plays. Home Assistant's join script makes it the Google group that matches, where one
+    // does. A screen's own speaker never groups: Move here only.
+    if (same_stream(slot, lead)) return Key::REMOVE;
     if (kind_of_room(lead) == Kind::SCREEN) return Key::CANNOT;
-    return completes_group(slot) ? Key::ADD : Key::CANNOT;
+    return r.sync && (l.group || l.sync) ? Key::ADD : Key::CANNOT;
   }
   // Move here: every other room, while the room in charge plays.
   bool can_move(int slot) const {
